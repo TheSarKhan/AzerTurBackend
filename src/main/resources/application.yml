@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: azertur-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/azertur}
+    username: ${DATABASE_USER:azertur}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  data:
+    redis:
+      repositories:
+        enabled: false
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${PORT:8080}
+app:
+  cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081}
+  security:
+    operations-user: ${OPERATIONS_USER:operations}
+    operations-password: ${OPERATIONS_PASSWORD}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
