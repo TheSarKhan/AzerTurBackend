@@ -18,7 +18,9 @@ public class BookingOperationsController {
   }
 
   public record Decision(
-      boolean approve, @NotBlank @Size(min = 3, max = 2000) String note, UUID replacementQuoteId) {}
+      @NotNull Boolean approve,
+      @NotBlank @Size(min = 3, max = 2000) String note,
+      UUID replacementQuoteId) {}
 
   @GetMapping("/bookings")
   public Object list() {

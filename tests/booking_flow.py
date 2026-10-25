@@ -36,6 +36,7 @@ assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},au
 assert call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Other customer test'},otherauth)[0]==404
 assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},otherauth,str(uuid.uuid4()))[0]==404
 assert call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Availability checked'},auth)[0]==403
+assert call('operations/bookings/'+bid+'/review',{'note':'Decision must be explicit'},ops)[0]==400
 status,booking=call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Availability checked'},ops);assert status==200 and booking['status']=='AWAITING_PAYMENT',(status,booking)
 assert call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Duplicate review'},ops)[0]==409
 assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':False},auth,str(uuid.uuid4()))[0]==409
