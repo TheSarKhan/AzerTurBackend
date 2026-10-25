@@ -39,3 +39,7 @@ Smoke checks require the running local API and load operations credentials from 
 The initial operations account uses HTTP Basic and the `OPERATIONS` role. Public endpoints are explicitly allowed; other endpoints are denied by default. Deploy with TLS; production user identity, customer auth, durable reservations, payment callbacks and operator workflows remain future implementation. Prices and currency conversion are sample values.
 
 See [architecture](docs/ARCHITECTURE.md). The local `.env` is never committed.
+
+## Customer review workflow update
+
+The customer registration, durable reservation request, office approval and demo-payment flows are now implemented. See [the current architecture, API and remaining production work](docs/ARCHITECTURE.md); that document supersedes the initial foundation-only notes above. No cloud deployment or live payment/provider connection is included.
