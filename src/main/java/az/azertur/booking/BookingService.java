@@ -81,7 +81,7 @@ public class BookingService {
         .orElseThrow(DomainException::missing);
   }
 
-  private Booking get(UUID id) {
+  public Booking get(UUID id) {
     return db.query("SELECT * FROM bookings WHERE id=?", mapper, id).stream()
         .findFirst()
         .orElseThrow(DomainException::missing);
@@ -146,6 +146,10 @@ public class BookingService {
   @Transactional
   public Booking review(UUID id, boolean approve, String note, String actor) {
     Booking b = lock(id);
+    if (db.queryForObject("SELECT count(*) FROM booking_requests WHERE booking_id=? AND status='PENDING'", Integer.class, id)>0)
+      throw DomainException.conflict("REQUEST_PENDING");
+    if (approve && db.queryForObject("SELECT count(*) FROM offer_drafts WHERE booking_id=?", Integer.class, id)>0)
+      throw DomainException.conflict("OFFER_WORKFLOW_REQUIRED");
     String next = BookingWorkflow.review(b.status(), approve);
     db.update(
         "UPDATE bookings SET status=?,operator_note=?,updated_at=now() WHERE id=?", next, note, id);
