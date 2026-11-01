@@ -17,10 +17,11 @@ def login(email,password):
  status,session=call('staff/auth/login',dict(email=email,password=password));return status,session
 status,admin=login(env['BOOTSTRAP_ADMIN_EMAIL'],env['BOOTSTRAP_ADMIN_PASSWORD']);assert status==200 and admin['staff']['role']=='ADMIN',(status,admin)
 adm='Bearer '+admin['token']
+assert admin['staff']['name']=='Administrator' and admin['staff']['email']==env['BOOTSTRAP_ADMIN_EMAIL'].lower(),admin
 assert login(env['BOOTSTRAP_ADMIN_EMAIL'],'wrong-password-123')[0]==401
 assert login('nobody-'+uuid.uuid4().hex+'@example.com','wrong-password-123')[0]==401
 assert call('staff/auth/me')[0]==401
-status,me=call('staff/auth/me',auth=adm);assert status==200 and me['email']==env['BOOTSTRAP_ADMIN_EMAIL'].lower()
+status,me=call('staff/auth/me',auth=adm);assert status==200 and me['email']==env['BOOTSTRAP_ADMIN_EMAIL'].lower() and me['name']=='Administrator',me
 # admin-only endpoints reject anonymous callers, customers and operators
 assert call('admin/staff')[0]==401
 suffix=uuid.uuid4().hex[:10]

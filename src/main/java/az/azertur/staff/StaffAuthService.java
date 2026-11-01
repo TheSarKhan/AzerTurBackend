@@ -1,6 +1,8 @@
 package az.azertur.staff;
 
 import az.azertur.shared.DomainException;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.time.*;
@@ -16,8 +18,11 @@ public class StaffAuthService {
   public static final Set<String> ROLES = Set.of("ADMIN", "OPERATOR");
   private static final int MIN_PASSWORD = 12;
 
-  public record Staff(UUID id, String email, String name, String role) implements Principal {
+  /** Principal name is the email so the audit trail identifies the person. */
+  public record Staff(UUID id, String email, @JsonProperty("name") String name, String role)
+      implements Principal {
     @Override
+    @JsonIgnore
     public String getName() {
       return email;
     }
