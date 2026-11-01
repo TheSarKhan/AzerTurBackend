@@ -1,29 +1,42 @@
-# AzerTur repositories
+# Customer reservations and office review
 
-- [Customer mobile app](https://github.com/TheSarKhan/AzerTurMobileClient) — React Native / Expo / TypeScript
-- [Backend](https://github.com/TheSarKhan/AzerTurBackend) — Java 21 / Spring Boot / PostgreSQL / Flyway / Redis / Spring Security / Swagger
-- [Website](https://github.com/TheSarKhan/AzerTurFrontend) — Next.js App Router / React / TypeScript
-- [Operations dashboard](https://github.com/TheSarKhan/AzerTurDashboardFrontend) — React / Vite / TypeScript
+## Agreed scope
 
-## Ownership
+Website, customer mobile app and office dashboard. Customer registration is mandatory to submit a reservation. Drivers and guides use separate products. The office checks availability before approval and handles changes and cancellations. EN/RU/AZ and EUR/USD/AZN are supported. Payments remain a demo; 30% deposit, seven-day balance date and 72-hour quote expiry are provisional demo rules. Email uses Gmail SMTP, WhatsApp and push use separate providers; no SMS. Cloud deployment is deferred.
 
-The backend owns business validation, price calculations, database migrations, quote persistence, cache and operations access. The website's `/api/quotes` is a transport proxy to Java and contains no price calculator. Mobile and dashboard call Java directly through configurable API URLs. OpenAPI is served by the backend at `/v3/api-docs`; Swagger UI is `/swagger-ui.html`.
+## Implemented flow
 
-The existing website design and its EN/RU content have been retained. Its destination copy, itineraries and display-only starting-price references are sample presentation content; live prices are calculated by Java. All rates and service prices are still demo values. Customer checkout and payment screens remain browser demos, and are not a production booking or authentication service.
+1. Browse tours and calculate an itemised, server-priced quote.
+2. Register/sign in with email and password. Website tokens stay in HttpOnly cookies; native tokens use Expo SecureStore. The backend stores only SHA-256 token hashes; sessions expire after seven days and can be revoked at logout. Passwords use BCrypt and authentication attempts are rate-limited in Redis.
+3. Submit a durable reservation request, initially `PENDING_REVIEW`.
+4. Office staff approve availability (`AWAITING_PAYMENT`) or reject with a customer-visible response. No payment is allowed before approval.
+5. Successful demo deposit moves the booking to `CONFIRMED`; the balance can then be simulated. Failed payments do not alter funds. Payment keys and row locks protect against retries and concurrent double payment.
+6. Customers submit change/cancellation requests. Open requests pause further payment. Office staff respond; accepting a change requires a new, unexpired backend quote and updates the reservation's date, selected services and totals. Paid currency cannot change and a total below the amount paid requires a separate manual refund process. Cancellation is employee-controlled; a paid demo cancellation is visibly marked for manual refund review.
+7. Every transition writes an audit event and an email/WhatsApp/push outbox entry. Email delivery is disabled by default. Newly queued emails can use Gmail SMTP once explicitly configured; old `WAITING_CONFIGURATION` rows are not automatically sent. WhatsApp and push remain waiting for provider connection. No external messages were sent during development tests.
 
-## Current API
+The immutable original quote key keeps reservation retries idempotent even after an amendment changes the active quote. Quote payloads are server snapshots; clients never supply authoritative totals. Customers can access only their own reservations and requests. Office endpoints require the separate `OPERATIONS` role.
 
-- `GET /actuator/health` — public readiness summary.
-- `GET /api/v1/tours` — database catalogue; Redis cached for five minutes.
-- `POST /api/v1/quotes` — validates and calculates a sample quote, persists its summary in PostgreSQL.
-- `GET /api/v1/operations/overview` — Spring Security protected; catalogue count, quote count and recent quote summaries.
+## API
 
-Operations authentication currently uses an environment-provided account and HTTP Basic. Credentials stay in dashboard memory and are cleared on sign-out; they are not put into Vite environment variables or local storage. Use HTTPS outside local development. Production staff identity/roles, customer login, durable booking/payment workflows, provider integrations, audit logging and catalogue management remain next implementation work.
+- `POST /api/v1/auth/register`, `/login`; `GET /me`; `POST /logout`.
+- `GET /api/v1/tours`; `POST /api/v1/quotes`.
+- `GET|POST /api/v1/bookings`; `GET /bookings/requests`.
+- `POST /bookings/{id}/demo-payment` with `Idempotency-Key`.
+- `POST /bookings/{id}/requests` (`CHANGE` or `CANCEL`).
+- Office: `GET /api/v1/operations/bookings`, `/requests`, `/notifications`.
+- Office: `POST /operations/bookings/{id}/review`; `POST /operations/requests/{id}/resolve`.
+- Office: `GET /operations/bookings/{id}/audit`.
 
-Quote service choices, currencies, deposit rules, route continuity, expiry and date limits have been moved from the former TypeScript API into Java. The backend stores quote summaries, not customer personal information. No live payment provider is connected.
+Swagger `/swagger-ui.html`, schema `/v3/api-docs`. The website BFF restricts routes, checks same-origin writes, redacts access tokens and proxies only customer endpoints. Native and dashboard use configurable direct API addresses. Office sign-in remains the environment-provided HTTP Basic foundation; individual staff identity/admin provisioning is still production work.
 
-## Local addresses
+## Before production
 
-Backend: `http://localhost:8080`; website: `http://localhost:3000`; dashboard: `http://localhost:5173`; PostgreSQL: `localhost:5432`; Redis: `localhost:6379`. Native mobile does not need browser CORS. Android Emulator uses `10.0.2.2` for the development computer; a real device requires its LAN address and an explicitly reachable backend.
+Email verification, password recovery and individual staff account management; real partner inventory/availability adapters and reconciliation; production payment provider/webhooks and approved refund policy; WhatsApp account and push project/device registration; approved company/legal/contact details; retention/backups/monitoring; signed device builds and store checks. All provider credentials belong in private runtime configuration.
 
-Each repository is independent, has its own lock/build files, environment example and CI. No secret files, build artifacts, dependency folders or Sites hosting identity belong in GitHub.
+SMS, driver/guides' own apps and cloud deployment are outside this implementation slice. The general marketing contact form remains an explicit non-sending preview. Live partner availability is not fabricated; the office can check it manually before approval. Demo refunds are not silently treated as real refunds.
+
+## Checks
+
+Backend `./mvnw verify`; with PostgreSQL/Redis/API running: `python3 tests/smoke.py` and `python3 tests/booking_flow.py`. The latter covers ownership, role isolation, approval gates, payment failure/idempotency, change/cancellation resolution and concurrent writes.
+
+Website `npm run typecheck`, `node tests/localization.mjs`, `npm run build`; `node tests/customer-bff.mjs` additionally needs the running backend and website. Dashboard `npm run build`. Mobile `npm run typecheck` and Expo Android/iOS bundle exports; exports are not APK/IPA builds or physical-device tests.

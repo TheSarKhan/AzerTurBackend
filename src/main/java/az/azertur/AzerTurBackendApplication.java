@@ -6,8 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class AzerTurBackendApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(AzerTurBackendApplication.class, args);
-	}
-
+  public static void main(String[] args) {
+    SpringApplication.run(AzerTurBackendApplication.class, args);
+  }
 }

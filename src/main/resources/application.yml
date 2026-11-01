@@ -1,4 +1,15 @@
 spring:
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 5000
+      "[mail.smtp.writetimeout]": 5000
   application:
     name: azertur-backend
   datasource:
@@ -25,11 +36,18 @@ server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
 app:
+  demo-payments: ${DEMO_PAYMENTS_ENABLED:true}
+  notifications:
+    email-enabled: ${EMAIL_ENABLED:false}
+    from: ${SMTP_FROM:}
   cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081}
   security:
     operations-user: ${OPERATIONS_USER:operations}
     operations-password: ${OPERATIONS_PASSWORD}
 management:
+  health:
+    mail:
+      enabled: ${EMAIL_ENABLED:false}
   endpoints:
     web:
       exposure:

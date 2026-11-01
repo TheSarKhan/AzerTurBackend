@@ -1,0 +1,59 @@
+name: Deploy
+# Production deploys only after CI succeeds on main, or manually from the Actions tab.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      IMAGE: aztrip-api
+      SERVICE: api
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Build linux/amd64 image
+        run: |
+          docker buildx build --platform linux/amd64 --load \
+            -t "$IMAGE:$SHA" -t "$IMAGE:latest" .
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Ship image to server
+        run: |
+          docker save "$IMAGE:$SHA" "$IMAGE:latest" | gzip \
+            | ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" 'gunzip | docker load'
+      - name: Restart service and wait until healthy
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd /opt/aztrip
+          docker compose up -d --no-deps api
+          for i in $(seq 1 36); do
+            if [ "$(docker inspect -f {{.State.Health.Status}} aztrip-api-1)" = healthy ]; then echo "api is healthy"; break; fi
+            if [ "$i" = 36 ]; then docker compose logs --tail 60 api; exit 1; fi
+            sleep 5
+          done
+          docker images aztrip-api --format '{{.Repository}}:{{.Tag}}' | grep -v ':latest$' | tail -n +4 | xargs -r docker rmi || true
+          REMOTE
