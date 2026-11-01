@@ -6,30 +6,37 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.*;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.web.cors.*;
 
 @Configuration
 public class SecurityConfig {
   @Bean
-  SecurityFilterChain security(HttpSecurity http, az.azertur.customer.CustomerAuthService auth)
+  SecurityFilterChain security(
+      HttpSecurity http,
+      az.azertur.customer.CustomerAuthService customers,
+      az.azertur.staff.StaffAuthService staff)
       throws Exception {
     return http.cors(c -> {})
         .csrf(c -> c.disable())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .addFilterBefore(
-            new az.azertur.customer.CustomerTokenFilter(auth),
+            new SessionTokenFilter(customers, staff),
             org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
                 .class)
         .authorizeHttpRequests(
             a ->
                 a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR)
                     .permitAll()
-                    .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login")
+                    .requestMatchers(
+                        "/api/v1/auth/register",
+                        "/api/v1/auth/login",
+                        "/api/v1/staff/auth/login")
                     .permitAll()
+                    .requestMatchers("/api/v1/staff/auth/me", "/api/v1/staff/auth/logout")
+                    .hasAnyRole("OPERATOR", "ADMIN")
                     .requestMatchers(
                         "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/bookings/**")
                     .hasRole("CUSTOMER")
@@ -42,24 +49,14 @@ public class SecurityConfig {
                         "/swagger-ui.html")
                     .permitAll()
                     .requestMatchers("/api/v1/operations/**")
-                    .hasRole("OPERATIONS")
+                    .hasAnyRole("OPERATOR", "ADMIN")
+                    .requestMatchers("/api/v1/admin/**")
+                    .hasRole("ADMIN")
                     .anyRequest()
                     .denyAll())
-        .httpBasic(b -> {})
+        .exceptionHandling(
+            e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
         .build();
-  }
-
-  @Bean
-  UserDetailsService users(
-      @Value("${app.security.operations-user}") String user,
-      @Value("${app.security.operations-password}") String password) {
-    if (password.isBlank() || password.length() < 16)
-      throw new IllegalStateException("OPERATIONS_PASSWORD must have at least 16 characters");
-    return new InMemoryUserDetailsManager(
-        User.withUsername(user)
-            .password("{bcrypt}" + new BCryptPasswordEncoder().encode(password))
-            .roles("OPERATIONS")
-            .build());
   }
 
   @Bean

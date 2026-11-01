@@ -20,7 +20,10 @@ public class OpenApiConfig {
             new Components()
                 .addSecuritySchemes(
                     "operationsAuth",
-                    new SecurityScheme().type(SecurityScheme.Type.HTTP).scheme("basic"))
+                    new SecurityScheme()
+                        .type(SecurityScheme.Type.HTTP)
+                        .scheme("bearer")
+                        .bearerFormat("opaque"))
                 .addSecuritySchemes(
                     "customerSession",
                     new SecurityScheme()

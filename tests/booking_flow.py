@@ -1,8 +1,7 @@
-import base64, concurrent.futures, datetime, json, os, pathlib, urllib.request, urllib.error, uuid
+import concurrent.futures, datetime, json, os, pathlib, urllib.request, urllib.error, uuid
 base=os.environ.get('API_ORIGIN','http://127.0.0.1:8080')
 env=dict(line.split('=',1) for line in pathlib.Path('.env').read_text().splitlines() if '=' in line) if pathlib.Path('.env').exists() else {}
-env.update({key:os.environ[key] for key in ['OPERATIONS_USER','OPERATIONS_PASSWORD'] if key in os.environ})
-ops='Basic '+base64.b64encode((env.get('OPERATIONS_USER','operations')+':'+env['OPERATIONS_PASSWORD']).encode()).decode()
+env.update({key:os.environ[key] for key in ['BOOTSTRAP_ADMIN_EMAIL','BOOTSTRAP_ADMIN_PASSWORD'] if key in os.environ})
 def call(path,body=None,auth=None,key=None):
  headers={'Content-Type':'application/json'}
  if auth:headers['Authorization']=auth
@@ -15,6 +14,8 @@ def call(path,body=None,auth=None,key=None):
   try:data=json.loads(raw)
   except:data={}
   return e.code,data
+status,staff_session=call('staff/auth/login',dict(email=env['BOOTSTRAP_ADMIN_EMAIL'],password=env['BOOTSTRAP_ADMIN_PASSWORD']));assert status==200,(status,staff_session)
+ops='Bearer '+staff_session['token']
 suffix=uuid.uuid4().hex
 registration={'email':'booking-'+suffix+'@example.com','password':'Test-only-strong-password-2026','name':'Integration Traveller','locale':'az'}
 status,session=call('auth/register',registration);assert status==201,(status,session)

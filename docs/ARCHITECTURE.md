@@ -14,7 +14,7 @@ Website, customer mobile app and office dashboard. Customer registration is mand
 6. Customers submit change/cancellation requests. Open requests pause further payment. Office staff respond; accepting a change requires a new, unexpired backend quote and updates the reservation's date, selected services and totals. Paid currency cannot change and a total below the amount paid requires a separate manual refund process. Cancellation is employee-controlled; a paid demo cancellation is visibly marked for manual refund review.
 7. Every transition writes an audit event and an email/WhatsApp/push outbox entry. Email delivery is disabled by default. Newly queued emails can use Gmail SMTP once explicitly configured; old `WAITING_CONFIGURATION` rows are not automatically sent. WhatsApp and push remain waiting for provider connection. No external messages were sent during development tests.
 
-The immutable original quote key keeps reservation retries idempotent even after an amendment changes the active quote. Quote payloads are server snapshots; clients never supply authoritative totals. Customers can access only their own reservations and requests. Office endpoints require the separate `OPERATIONS` role.
+The immutable original quote key keeps reservation retries idempotent even after an amendment changes the active quote. Quote payloads are server snapshots; clients never supply authoritative totals. Customers can access only their own reservations and requests. Office endpoints require a staff session with the `OPERATOR` or `ADMIN` role; staff management requires `ADMIN`.
 
 ## API
 
@@ -27,7 +27,7 @@ The immutable original quote key keeps reservation retries idempotent even after
 - Office: `POST /operations/bookings/{id}/review`; `POST /operations/requests/{id}/resolve`.
 - Office: `GET /operations/bookings/{id}/audit`.
 
-Swagger `/swagger-ui.html`, schema `/v3/api-docs`. The website BFF restricts routes, checks same-origin writes, redacts access tokens and proxies only customer endpoints. Native and dashboard use configurable direct API addresses. Office sign-in remains the environment-provided HTTP Basic foundation; individual staff identity/admin provisioning is still production work.
+Swagger `/swagger-ui.html`, schema `/v3/api-docs`. The website BFF restricts routes, checks same-origin writes, redacts access tokens and proxies only customer endpoints. Native and dashboard use configurable direct API addresses. Office staff sign in with individual email and password accounts (`/api/v1/staff/auth/login`) and `OPERATOR`/`ADMIN` roles; administrators manage accounts through `/api/v1/admin/staff`. Staff email verification and password recovery are still production work.
 
 ## Before production
 
