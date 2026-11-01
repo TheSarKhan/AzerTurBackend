@@ -27,6 +27,9 @@ public class BookingOperationsController {
     return bookings.operations();
   }
 
+  @GetMapping("/bookings/{id}")
+  public Object detail(@PathVariable UUID id) { return bookings.get(id); }
+
   @GetMapping("/requests")
   public Object requests() {
     return bookings.operationsRequests();

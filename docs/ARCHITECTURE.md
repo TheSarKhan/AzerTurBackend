@@ -40,3 +40,8 @@ SMS, driver/guides' own apps and cloud deployment are outside this implementatio
 Backend `./mvnw verify`; with PostgreSQL/Redis/API running: `python3 tests/smoke.py` and `python3 tests/booking_flow.py`. The latter covers ownership, role isolation, approval gates, payment failure/idempotency, change/cancellation resolution and concurrent writes.
 
 Website `npm run typecheck`, `node tests/localization.mjs`, `npm run build`; `node tests/customer-bff.mjs` additionally needs the running backend and website. Dashboard `npm run build`. Mobile `npm run typecheck` and Expo Android/iOS bundle exports; exports are not APK/IPA builds or physical-device tests.
+
+
+## Operator offer workflow v1
+
+See [OPERATOR_OFFERS.md](OPERATOR_OFFERS.md) for the persisted draft/preview/send workflow, private/public field separation, immutable revisions, source validation, payment gates and verification. This supersedes earlier notes that offer preparation is not implemented. Contracts and staged payments remain planned.

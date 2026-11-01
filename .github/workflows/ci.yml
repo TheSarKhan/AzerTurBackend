@@ -55,6 +55,7 @@ jobs:
         run: |
           python3 tests/smoke.py
           python3 tests/booking_flow.py
+          python3 tests/offer_flow.py
       - name: Show API log on failure
         if: failure()
         run: tail -100 api.log || true
