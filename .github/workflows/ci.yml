@@ -8,8 +8,8 @@ jobs:
     timeout-minutes: 10
     env:
       DATABASE_PASSWORD: ci-test-database-only
-      OPERATIONS_USER: operations
-      OPERATIONS_PASSWORD: ci-test-operations-only-password
+      BOOTSTRAP_ADMIN_EMAIL: admin@ci.example.test
+      BOOTSTRAP_ADMIN_PASSWORD: ci-test-admin-only-password
       EMAIL_ENABLED: "false"
       DEMO_PAYMENTS_ENABLED: "true"
     services:
@@ -55,6 +55,7 @@ jobs:
         run: |
           python3 tests/smoke.py
           python3 tests/booking_flow.py
+          python3 tests/staff_flow.py
       - name: Show API log on failure
         if: failure()
         run: tail -100 api.log || true

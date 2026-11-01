@@ -22,6 +22,8 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+    # Feature branches add migrations in parallel; apply a lower version that merges later.
+    out-of-order: true
   data:
     redis:
       repositories:
@@ -42,8 +44,8 @@ app:
     from: ${SMTP_FROM:}
   cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081}
   security:
-    operations-user: ${OPERATIONS_USER:operations}
-    operations-password: ${OPERATIONS_PASSWORD}
+    bootstrap-admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    bootstrap-admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 management:
   health:
     mail:

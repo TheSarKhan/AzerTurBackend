@@ -1,4 +1,4 @@
-import os, json, base64, pathlib, urllib.request, urllib.error, datetime
+import os, json, pathlib, urllib.request, urllib.error, datetime
 origin=os.environ.get('API_ORIGIN','http://127.0.0.1:8080')
 def call(path,body=None,authorization=None,base=origin):
  headers={'Content-Type':'application/json'}
@@ -21,10 +21,11 @@ for patch in [dict(pax=13),dict(date='bad-date'),dict(customDays=2,cities=['Baku
 secrets={}
 env=pathlib.Path('.env')
 if env.exists(): secrets=dict(line.split('=',1) for line in env.read_text().splitlines() if '=' in line and not line.startswith('#'))
-password=os.environ.get('OPERATIONS_PASSWORD',secrets.get('OPERATIONS_PASSWORD'))
-if password:
- user=os.environ.get('OPERATIONS_USER',secrets.get('OPERATIONS_USER','operations'))
- authorization='Basic '+base64.b64encode((user+':'+password).encode()).decode()
+admin_email=os.environ.get('BOOTSTRAP_ADMIN_EMAIL',secrets.get('BOOTSTRAP_ADMIN_EMAIL'))
+admin_password=os.environ.get('BOOTSTRAP_ADMIN_PASSWORD',secrets.get('BOOTSTRAP_ADMIN_PASSWORD'))
+if admin_email and admin_password:
+ status,session=call('/api/v1/staff/auth/login',dict(email=admin_email,password=admin_password));assert status==200 and session['staff']['role']=='ADMIN'
+ authorization='Bearer '+session['token']
  status,summary=call('/api/v1/operations/overview',authorization=authorization);assert status==200 and summary['tourCount']==3 and summary['quoteCount']>=3
 if os.environ.get('FRONTEND_ORIGIN'):
  status,quote=call('/api/quotes',body,base=os.environ['FRONTEND_ORIGIN']);assert status==200 and quote['total']==530

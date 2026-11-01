@@ -1,5 +1,7 @@
-package az.azertur.customer;
+package az.azertur.config;
 
+import az.azertur.customer.CustomerAuthService;
+import az.azertur.staff.StaffAuthService;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import java.io.IOException;
@@ -9,11 +11,14 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-public class CustomerTokenFilter extends OncePerRequestFilter {
-  private final CustomerAuthService auth;
+/** Resolves an opaque bearer token to either a customer or an office staff session. */
+public class SessionTokenFilter extends OncePerRequestFilter {
+  private final CustomerAuthService customers;
+  private final StaffAuthService staff;
 
-  public CustomerTokenFilter(CustomerAuthService auth) {
-    this.auth = auth;
+  public SessionTokenFilter(CustomerAuthService customers, StaffAuthService staff) {
+    this.customers = customers;
+    this.staff = staff;
   }
 
   @Override
@@ -22,8 +27,21 @@ public class CustomerTokenFilter extends OncePerRequestFilter {
       throws IOException, ServletException {
     String header = req.getHeader("Authorization");
     if (header != null && header.startsWith("Bearer ")) {
-      var customer = auth.authenticate(header.substring(7));
-      if (customer.isEmpty()) {
+      String token = header.substring(7);
+      Object principal = null;
+      String role = null;
+      var customer = customers.authenticate(token);
+      if (customer.isPresent()) {
+        principal = customer.get();
+        role = "ROLE_CUSTOMER";
+      } else {
+        var member = staff.authenticate(token);
+        if (member.isPresent()) {
+          principal = member.get();
+          role = "ROLE_" + member.get().role();
+        }
+      }
+      if (principal == null) {
         res.setStatus(401);
         res.setContentType("application/json");
         res.getWriter().write("{\"error\":\"UNAUTHENTICATED\"}");
@@ -32,7 +50,7 @@ public class CustomerTokenFilter extends OncePerRequestFilter {
       var context = SecurityContextHolder.createEmptyContext();
       context.setAuthentication(
           new UsernamePasswordAuthenticationToken(
-              customer.get(), null, List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER"))));
+              principal, null, List.of(new SimpleGrantedAuthority(role))));
       SecurityContextHolder.setContext(context);
     }
     chain.doFilter(req, res);
