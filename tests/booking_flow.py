@@ -57,7 +57,8 @@ assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'not
 updated=next(b for b in call('bookings',auth=auth)[1] if b['id']==bid);assert updated['departure']==new_date and updated['quoteId']==amendment
 assert call('bookings',{'quoteId':qid,'note':'Retry original request after amendment'},auth)[1]['id']==bid
 status,request=call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Please cancel the demo booking.'},auth);assert status==200
-assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Cancellation accepted; demo refund handled manually.'},ops)[0]==200
+assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Cannot bypass refund assessment.'},ops)[1]['error']=='CANCELLATION_REVIEW_REQUIRED'
+assert next(r for r in call('bookings/requests',auth=auth)[1] if r['id']==request['id'])['status']=='PENDING'
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Repeat cancellation'},ops)[0]==409
 assert call('bookings/'+bid+'/demo-payment',{'kind':'BALANCE','success':True},auth,str(uuid.uuid4()))[0]==409
 # Concurrent create and payment requests must not produce duplicate reservations or charges.
