@@ -43,9 +43,14 @@ public class ContractService {
     if (db.queryForObject("SELECT count(*) FROM bookings WHERE id=?", Integer.class, booking)==0) throw DomainException.missing();
     return db.queryForList("SELECT * FROM contract_documents WHERE booking_id=? ORDER BY version DESC LIMIT 1", booking).stream().findFirst().map(this::summary).orElse(null);
   }
+  public Object offerContext(UUID id) {
+    var b=db.queryForList("SELECT quote_id FROM bookings WHERE id=?",id).stream().findFirst().orElseThrow(DomainException::missing);
+    return Map.of("offerId",latestOffer(id,b.get("quote_id")));
+  }
   @Transactional
-  public Object upload(UUID id, MultipartFile file, String actor) throws Exception {
+  public Object upload(UUID id, MultipartFile file, UUID expectedOffer, String actor) throws Exception {
     var b = booking(id); active(b); var offer=latestOffer(id,b.get("quote_id"));
+    if (!offer.equals(expectedOffer)) throw DomainException.conflict("STALE_OFFER");
     if (file.isEmpty() || file.getSize()>5_000_000) throw DomainException.bad("INVALID_PDF_SIZE");
     byte[] bytes=file.getBytes();
     if (bytes.length<8 || !new String(bytes,0,5,java.nio.charset.StandardCharsets.US_ASCII).equals("%PDF-"))
@@ -71,7 +76,7 @@ public class ContractService {
   @Transactional
   public Object send(UUID id, UUID doc, String actor) {
     var b=booking(id); var d=document(id,doc);
-    if (d.get("state").equals("SENT") && d.get("offer_id").equals(latestOffer(id,b.get("quote_id")))) return summary(d);
+    if (List.of("SENT","ACCEPTED").contains(d.get("state")) && d.get("offer_id").equals(latestOffer(id,b.get("quote_id")))) return summary(d);
     active(b);
     if (!d.get("state").equals("DRAFT") || !d.get("offer_id").equals(latestOffer(id,b.get("quote_id"))))
       throw DomainException.conflict("STALE_CONTRACT");
@@ -96,11 +101,11 @@ public class ContractService {
   public Object accept(UUID id,UUID doc,UUID customer,String hash) {
     var b=booking(id);
     if (!customer.equals(b.get("customer_id"))) throw DomainException.missing();
-    active(b);
     var d=document(id,doc);
     if (!doc.equals(((Map<?,?>)Optional.ofNullable(customer(id,customer)).orElseThrow(DomainException::missing)).get("id")) || !Objects.equals(hash,d.get("sha256")))
       throw DomainException.conflict("STALE_CONTRACT");
     if (d.get("state").equals("ACCEPTED")) return summary(d);
+    active(b);
     if (!d.get("state").equals("SENT")) throw DomainException.conflict("STALE_CONTRACT");
     db.update("UPDATE contract_documents SET state='ACCEPTED',accepted_by=?,accepted_at=now() WHERE id=?",customer,doc);
     audit(id,customer.toString(),"CONTRACT_ACCEPTED",doc+" "+hash);
