@@ -38,6 +38,7 @@ public class PaymentRequestService {
           || amount!=((Number)p.get("amount_minor")).longValue()) throw DomainException.conflict("IDEMPOTENCY_KEY_REUSED");
       return list(booking);
     }
+    if(db.queryForObject("SELECT count(*) FROM cancelled_services WHERE booking_id=?",Integer.class,booking)>0) throw DomainException.conflict("PAYMENT_PLAN_REVIEW_REQUIRED");
     if (!b.get("status").equals("PENDING_REVIEW") || ((Number)b.get("paid")).longValue()!=0)
       throw DomainException.conflict("PAYMENT_WORKFLOW_CONFLICT");
     if (db.queryForObject("SELECT count(*) FROM booking_requests WHERE booking_id=? AND status='PENDING'",Integer.class,booking)>0)

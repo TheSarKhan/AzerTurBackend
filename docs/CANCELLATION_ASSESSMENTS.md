@@ -1,6 +1,6 @@
 # Cancellation assessment API
 
-This phase supports full-booking CANCEL requests, assessed separately per contracted service. Partial service cancellation and refund transfer execution are not implemented.
+Supports full-booking and selected-service CANCEL requests, assessed separately per contracted service. Bank refund execution is not implemented.
 
 Operations:
 - POST /api/v1/operations/requests/{id}/cancellation-assessment: save reviewed service allocations/rules with optimistic version.
@@ -15,4 +15,17 @@ Allocations must cover all contracted services, equal received funds and stay wi
 
 The old resolve endpoint cannot bypass assessment for paid or contracted bookings. Paid legacy demo bookings without a verifiable accepted contract require a migration/manual review path; no unverifiable automatic refund is allowed.
 
-Outstanding: customer-facing breakdown, operator UI, partial cancellations, supplier confirmation evidence and Epoint refund execution/reconciliation. Current states describe a reviewed/approved plan only.
+The approved UI now supplies operator review and customer breakdowns. Outstanding: external supplier confirmation integrations and Epoint refund execution/reconciliation. Current states describe a reviewed/approved plan only.
+
+## Approved cancellation UI integration
+
+The approved customer and office screens now connect to this API. V10 adds service selections, cancellation records, and separate customer explanation/internal note storage. A partial approval keeps unaffected services active; subsequent requests operate only on remaining services and remaining received-payment allocations. A full remaining-service cancellation closes the booking.
+
+GET/POST /api/v1/bookings/{id}/cancellation provides owned context and request submission.
+GET /api/v1/bookings/{id}/cancellation-updates returns approved customer-safe breakdowns (no supplier references, rule interpretation or internal notes).
+GET /api/v1/bookings/{id}/cancellation-updates/{request}/pdf returns an owned approved summary with embedded Unicode font.
+GET /api/v1/operations/requests/{id}/cancellation-context provides staff context and selection.
+
+Pre-contract zero-payment cancellation is supported for the entire request only. Partial cancellations require an accepted contract. Paid legacy bookings without a valid accepted source require manual migration. After partial cancellation, new payment requests and offer amendments are blocked until an explicit revised plan can be reviewed; this avoids reviving cancelled services or requesting stale prices.
+
+Current refund status is PENDING or NOT_REQUIRED. No endpoint records or claims that bank funds have been returned.
