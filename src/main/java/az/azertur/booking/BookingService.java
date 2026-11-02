@@ -185,6 +185,8 @@ public class BookingService {
             Long.class,
             id)
         > 0) throw DomainException.conflict("REQUEST_PENDING");
+    if (db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND status<>'CANCELLED'", Integer.class, id)>0)
+      throw DomainException.conflict("STAGED_PAYMENT_REQUIRED");
     int amount = BookingWorkflow.payable(b.status(), b.total(), b.deposit(), b.paid(), kind);
     if (!success) throw DomainException.conflict("DEMO_PAYMENT_FAILED");
     db.update(
