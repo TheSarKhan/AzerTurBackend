@@ -187,6 +187,7 @@ public class BookingService {
         > 0) throw DomainException.conflict("REQUEST_PENDING");
     if (db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND status<>'CANCELLED'", Integer.class, id)>0)
       throw DomainException.conflict("STAGED_PAYMENT_REQUIRED");
+    if(db.queryForObject("SELECT count(*) FROM cancelled_services WHERE booking_id=?",Integer.class,id)>0) throw DomainException.conflict("PAYMENT_PLAN_REVIEW_REQUIRED");
     int amount = BookingWorkflow.payable(b.status(), b.total(), b.deposit(), b.paid(), kind);
     if (!success) throw DomainException.conflict("DEMO_PAYMENT_FAILED");
     db.update(
@@ -271,21 +272,25 @@ public class BookingService {
     var r = rows.getFirst();
     UUID booking = (UUID) r.get("booking_id");
     Booking b = lock(booking);
+    boolean entireCancellation = true;
     if (!"PENDING".equals(r.get("status"))) throw DomainException.conflict("ALREADY_RESOLVED");
     if (accept && List.of("CANCELLED", "REJECTED").contains(b.status()))
       throw DomainException.conflict("REQUEST_NOT_ALLOWED");
     if (accept && "CANCEL".equals(r.get("kind"))) {
       long received=b.paid()*100L+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,booking);
+      received-=db.queryForObject("SELECT coalesce(sum(allocated_minor),0) FROM cancelled_services WHERE booking_id=?",Long.class,booking);
       var accepted=db.queryForList("SELECT id FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL ORDER BY accepted_at DESC LIMIT 1",booking);
       if(received>0 || !accepted.isEmpty()) {
         var plans=db.queryForList("SELECT * FROM cancellation_assessments WHERE request_id=? AND state='APPROVED'",request);
         if(plans.isEmpty() || accepted.isEmpty()) throw DomainException.conflict("CANCELLATION_REVIEW_REQUIRED");
         var plan=plans.getFirst();
+        entireCancellation=db.queryForObject("SELECT coalesce((payload::jsonb ->> 'fullCancellation')::boolean,true) FROM cancellation_assessments WHERE request_id=?",Boolean.class,request);
         if(!b.quoteId().equals(plan.get("source_quote_id")) || !accepted.getFirst().get("id").equals(plan.get("contract_id")) || received!=((Number)plan.get("paid_minor")).longValue())
           throw DomainException.conflict("STALE_ASSESSMENT");
       }
     }
     if (accept && "CHANGE".equals(r.get("kind"))) {
+      if(db.queryForObject("SELECT count(*) FROM cancelled_services WHERE booking_id=?",Integer.class,booking)>0) throw DomainException.conflict("PARTIAL_CANCELLATION_REQUIRES_MANUAL_REVIEW");
       if (replacementQuote == null) throw DomainException.bad("REPLACEMENT_QUOTE_REQUIRED");
       var priced =
           db.queryForList(
@@ -323,7 +328,7 @@ public class BookingService {
             response,
             request);
     if (updated != 1) throw DomainException.conflict("ALREADY_RESOLVED");
-    if (accept && "CANCEL".equals(r.get("kind")))
+    if (accept && "CANCEL".equals(r.get("kind")) && entireCancellation)
       db.update(
           "UPDATE bookings SET status='CANCELLED',operator_note=?,updated_at=now() WHERE id=?",
           response,

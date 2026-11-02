@@ -92,6 +92,7 @@ public class OfferService {
   }
 
   private void editable(Map<String, Object> b) {
+    if(db.queryForObject("SELECT count(*) FROM cancelled_services WHERE booking_id=?",Integer.class,b.get("id"))>0) throw DomainException.conflict("PARTIAL_CANCELLATION_REQUIRES_MANUAL_REVIEW");
     if (!b.get("status").equals("PENDING_REVIEW") || ((Number) b.get("paid")).intValue() != 0)
       throw DomainException.conflict("OFFER_NOT_EDITABLE");
   }
