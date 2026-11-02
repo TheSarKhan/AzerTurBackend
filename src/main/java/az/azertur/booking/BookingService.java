@@ -274,6 +274,17 @@ public class BookingService {
     if (!"PENDING".equals(r.get("status"))) throw DomainException.conflict("ALREADY_RESOLVED");
     if (accept && List.of("CANCELLED", "REJECTED").contains(b.status()))
       throw DomainException.conflict("REQUEST_NOT_ALLOWED");
+    if (accept && "CANCEL".equals(r.get("kind"))) {
+      long received=b.paid()*100L+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,booking);
+      var accepted=db.queryForList("SELECT id FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL ORDER BY accepted_at DESC LIMIT 1",booking);
+      if(received>0 || !accepted.isEmpty()) {
+        var plans=db.queryForList("SELECT * FROM cancellation_assessments WHERE request_id=? AND state='APPROVED'",request);
+        if(plans.isEmpty() || accepted.isEmpty()) throw DomainException.conflict("CANCELLATION_REVIEW_REQUIRED");
+        var plan=plans.getFirst();
+        if(!b.quoteId().equals(plan.get("source_quote_id")) || !accepted.getFirst().get("id").equals(plan.get("contract_id")) || received!=((Number)plan.get("paid_minor")).longValue())
+          throw DomainException.conflict("STALE_ASSESSMENT");
+      }
+    }
     if (accept && "CHANGE".equals(r.get("kind"))) {
       if (replacementQuote == null) throw DomainException.bad("REPLACEMENT_QUOTE_REQUIRED");
       var priced =
