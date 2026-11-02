@@ -24,7 +24,7 @@ public class PaymentRequestService {
     return list(booking);
   }
   public Object list(UUID booking) {
-    return db.queryForList("SELECT id,contract_id,kind,service_key,amount_minor,currency,status,created_at FROM staged_payment_requests WHERE booking_id=? ORDER BY created_at",booking);
+    return db.queryForList("SELECT id,contract_id,kind,service_key,amount_minor,currency,status,created_at,customer_message FROM staged_payment_requests WHERE booking_id=? ORDER BY created_at",booking);
   }
   @Transactional
   public Object issue(UUID booking,Issue input,String actor) {
