@@ -46,9 +46,11 @@ public=call('bookings/offers',auth=auth)[1];assert len(public)==1 and public[0][
 assert next(x for x in call('bookings',auth=auth)[1] if x['id']==bid)['status']=='PENDING_REVIEW'
 assert call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Must not bypass contract gate'},ops)[1]['error']=='OFFER_WORKFLOW_REQUIRED'
 
-def upload(path, data, auth):
+def upload(path, data, auth, offer_id=None):
+ if offer_id is None: offer_id=call(path+'-offer',auth=ops)[1]['offerId']
  boundary='----qa'+uuid.uuid4().hex
  payload=(('--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="sample.pdf"\r\nContent-Type: application/pdf\r\n\r\n').encode()+data+('\r\n--'+boundary+'--\r\n').encode())
+ payload=payload.replace(('--'+boundary+'--').encode(), ('--'+boundary+'\r\nContent-Disposition: form-data; name="offerId"\r\n\r\n'+offer_id+'\r\n--'+boundary+'--').encode())
  req=urllib.request.Request(base+'/api/v1/'+path,payload,{'Authorization':auth,'Content-Type':'multipart/form-data; boundary='+boundary})
  try:
   with urllib.request.urlopen(req,timeout=20) as r:return r.status,json.loads(r.read())

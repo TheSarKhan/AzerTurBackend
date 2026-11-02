@@ -46,9 +46,11 @@ public=call('bookings/offers',auth=auth)[1];assert len(public)==1 and public[0][
 assert next(x for x in call('bookings',auth=auth)[1] if x['id']==bid)['status']=='PENDING_REVIEW'
 assert call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Must not bypass contract gate'},ops)[1]['error']=='OFFER_WORKFLOW_REQUIRED'
 
-def upload(path, data, auth):
+def upload(path, data, auth, offer_id=None):
+ if offer_id is None: offer_id=call(path+'-offer',auth=ops)[1]['offerId']
  boundary='----qa'+uuid.uuid4().hex
  payload=(('--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="sample.pdf"\r\nContent-Type: application/pdf\r\n\r\n').encode()+data+('\r\n--'+boundary+'--\r\n').encode())
+ payload=payload.replace(('--'+boundary+'--').encode(), ('--'+boundary+'\r\nContent-Disposition: form-data; name="offerId"\r\n\r\n'+offer_id+'\r\n--'+boundary+'--').encode())
  req=urllib.request.Request(base+'/api/v1/'+path,payload,{'Authorization':auth,'Content-Type':'multipart/form-data; boundary='+boundary})
  try:
   with urllib.request.urlopen(req,timeout=20) as r:return r.status,json.loads(r.read())
@@ -87,6 +89,24 @@ assert call(customer_path+'/'+contract['id']+'/accept',{'sha256':contract['sha25
 assert call(customer_path+'/'+contract['id']+'/accept',{'sha256':contract['sha256']},auth)[1]['state']=='ACCEPTED'
 assert call(customer_path+'/'+contract['id']+'/accept',{'sha256':contract['sha256']},auth)[1]['state']=='ACCEPTED'
 assert next(x for x in call('bookings',auth=auth)[1] if x['id']==bid)['status']=='PENDING_REVIEW'
+
+# Replacing the PDF for the same offer requires a fresh customer confirmation.
+first=call(customer_path,auth=auth)[1]
+status,newdoc=upload(cp,valid_pdf(),ops);assert status==200
+assert newdoc['version']==contract['version']+1
+assert call(customer_path,auth=auth)[1]['id']==contract['id'] # drafts are not sent
+assert call(cp+'/'+newdoc['id']+'/send',{},ops)[1]['state']=='SENT'
+assert call(customer_path,auth=auth)[1]['accepted_at'] is None
+assert call(customer_path+'/'+contract['id']+'/accept',{'sha256':contract['sha256']},auth)[0] in (404,409)
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+ results=list(pool.map(lambda _:call(customer_path+'/'+newdoc['id']+'/accept',{'sha256':newdoc['sha256']},auth),range(2)))
+assert all(status==200 for status,_ in results),results
+assert len({value['accepted_at'] for _,value in results})==1
+assert call(cp+'/'+newdoc['id']+'/send',{},ops)[1]['state']=='ACCEPTED'
+audit=call('operations/bookings/'+bid+'/audit',auth=ops)[1]
+assert sum(x['action']=='CONTRACT_ACCEPTED' for x in audit)==2
+assert first['sha256'] in next(x['note'] for x in audit if x['action']=='CONTRACT_ACCEPTED')
+
 d['services'][0]['unitPrice']=100
 _,d=call(path,d,ops)
 assert call(path+'/preview',{'version':d['version']},ops)[0]==200
@@ -94,3 +114,6 @@ assert call(path+'/send',{'version':d['version']},ops)[0]==200
 assert call(customer_path,auth=auth)==(200,None)
 assert call(customer_path+'/'+contract['id']+'/accept',{'sha256':contract['sha256']},auth)[0] in (404,409)
 print('Contract checks passed: ownership, draft isolation, PDF validation, immutable hash, duplicate actions, offer revision invalidation, and no payment transition.')
+
+assert upload(cp,valid_pdf(),ops,contract['offer_id'])[1]['error']=='STALE_OFFER'
+print('Replacement, concurrent acceptance and stale operator-offer checks passed.')

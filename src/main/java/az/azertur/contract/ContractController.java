@@ -15,8 +15,10 @@ public class ContractController {
   public record Confirmation(String sha256) {}
   @GetMapping("/api/v1/operations/bookings/{id}/contract")
   Object operator(@PathVariable UUID id) { return service.operator(id); }
+  @GetMapping("/api/v1/operations/bookings/{id}/contract-offer")
+  Object offerContext(@PathVariable UUID id) { return service.offerContext(id); }
   @PostMapping("/api/v1/operations/bookings/{id}/contract")
-  Object upload(@PathVariable UUID id,@RequestParam("file") MultipartFile file,Principal user) throws Exception { return service.upload(id,file,user.getName()); }
+  Object upload(@PathVariable UUID id,@RequestParam("file") MultipartFile file,@RequestParam UUID offerId,Principal user) throws Exception { return service.upload(id,file,offerId,user.getName()); }
   @PostMapping("/api/v1/operations/bookings/{id}/contract/{doc}/send")
   Object send(@PathVariable UUID id,@PathVariable UUID doc,Principal user) { return service.send(id,doc,user.getName()); }
   @GetMapping("/api/v1/operations/bookings/{id}/contract/{doc}/pdf")
