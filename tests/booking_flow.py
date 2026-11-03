@@ -15,6 +15,8 @@ def call(path,body=None,auth=None,key=None):
   try:data=json.loads(raw)
   except:data={}
   return e.code,data
+from qa_accounts import verified
+call=verified(call)
 suffix=uuid.uuid4().hex
 registration={'email':'booking-'+suffix+'@example.com','password':'Test-only-strong-password-2026','name':'Integration Traveller','locale':'az'}
 status,session=call('auth/register',registration);assert status==201,(status,session)
@@ -46,16 +48,16 @@ assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},au
 status,booking=call('bookings/'+bid+'/demo-payment',{'kind':'BALANCE','success':True},auth,str(uuid.uuid4()));assert status==200 and booking['paid']==530
 status,request=call('bookings/'+bid+'/requests',{'kind':'CHANGE','message':'Please change the pickup time.'},auth);assert status==200,(status,request)
 assert call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Duplicate active request'},auth)[0]==409
-assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Missing amendment quote'},ops)[0]==400
+assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Missing amendment quote'},ops)[0]==409
 new_date=(datetime.date.today()+datetime.timedelta(days=31)).isoformat()
 wrong_currency=make_quote(currency='USD')
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Invalid paid currency switch','replacementQuoteId':wrong_currency},ops)[0]==409
 below_paid=make_quote(pax=1)
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Requires a manual refund','replacementQuoteId':below_paid},ops)[0]==409
 amendment=make_quote(date=new_date)
-assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Date changed with customer agreement.','replacementQuoteId':amendment},ops)[0]==200
-updated=next(b for b in call('bookings',auth=auth)[1] if b['id']==bid);assert updated['departure']==new_date and updated['quoteId']==amendment
-assert call('bookings',{'quoteId':qid,'note':'Retry original request after amendment'},auth)[1]['id']==bid
+assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Date changed with customer agreement.','replacementQuoteId':amendment},ops)[1]['error']=='AMENDMENT_WORKFLOW_REQUIRED'
+updated=next(b for b in call('bookings',auth=auth)[1] if b['id']==bid);assert updated['quoteId']==qid
+assert call('operations/requests/'+request['id']+'/resolve',{'approve':False,'note':'Paid amendment requires an accepted PDF contract.'},ops)[0]==200
 status,request=call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Please cancel the demo booking.'},auth);assert status==200
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Cannot bypass refund assessment.'},ops)[1]['error']=='CANCELLATION_REVIEW_REQUIRED'
 assert next(r for r in call('bookings/requests',auth=auth)[1] if r['id']==request['id'])['status']=='PENDING'

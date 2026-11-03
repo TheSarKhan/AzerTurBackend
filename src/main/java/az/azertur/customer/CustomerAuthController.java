@@ -32,7 +32,7 @@ public class CustomerAuthController {
     limiter.check(req.getRemoteAddr(), input.email());
     return ResponseEntity.status(201)
         .cacheControl(CacheControl.noStore())
-        .body(auth.register(input.email(), input.password(), input.name(), input.locale()));
+        .body(auth.register(input.email(), input.password(), input.name(), input.locale(),req.getHeader("User-Agent")));
   }
 
   @PostMapping("/login")
@@ -40,7 +40,7 @@ public class CustomerAuthController {
     limiter.check(req.getRemoteAddr(), input.email());
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(auth.login(input.email(), input.password()));
+        .body(auth.login(input.email(), input.password(),req.getHeader("User-Agent")));
   }
 
   @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "customerSession")

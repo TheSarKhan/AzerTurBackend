@@ -10,6 +10,9 @@ jobs:
       DATABASE_PASSWORD: ci-test-database-only
       OPERATIONS_USER: operations
       OPERATIONS_PASSWORD: ci-test-operations-only-password
+      ACCOUNT_LINK_KEY: "Y2ktb25seS1hY2NvdW50LWxpbmstc2VjcmV0LWtleSE="
+      PORTAL_ORIGIN: "http://127.0.0.1:4182"
+      ALLOW_QA_ACCOUNT_FIXTURES: "1"
       EMAIL_ENABLED: "false"
       DEMO_PAYMENTS_ENABLED: "true"
     services:
@@ -56,6 +59,9 @@ jobs:
           python3 tests/smoke.py
           python3 tests/booking_flow.py
           python3 tests/offer_flow.py
+          python3 tests/account_security_flow.py
+          python3 tests/amendment_flow.py
+          python3 tests/amendment_revision_flow.py
       - name: Show API log on failure
         if: failure()
         run: tail -100 api.log || true
