@@ -76,7 +76,7 @@ status,blocked=call('bookings/'+race+'/demo-payment',{'kind':'BALANCE','success'
 assert call('operations/requests/'+pending['id']+'/resolve',{'approve':False,'note':'Cancellation declined after customer discussion'},ops)[0]==200
 assert call('bookings/'+race+'/demo-payment',{'kind':'BALANCE','success':True},auth,str(uuid.uuid4()))[1]['paid']==530
 status,outbox=call('operations/notifications',auth=ops);assert status==200 and outbox
-email=next(n for n in outbox if n['channel']=='EMAIL')
+email=next(n for n in outbox['items'] if n['channel']=='EMAIL')
 assert call('operations/notifications/'+email['id']+'/send-email',{},ops)[0]==409
 assert call('auth/logout',{},'Bearer '+login['token'])[0]==204
 assert call('auth/me',auth='Bearer '+login['token'])[0]==401

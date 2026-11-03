@@ -42,6 +42,8 @@ server:
 app:
   demo-payments: ${DEMO_PAYMENTS_ENABLED:true}
   notifications:
+    push-enabled: ${PUSH_ENABLED:false}
+    expo-access-token: ${EXPO_ACCESS_TOKEN:}
     email-enabled: ${EMAIL_ENABLED:false}
     from: ${SMTP_FROM:}
   cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081}

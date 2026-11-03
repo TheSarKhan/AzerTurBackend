@@ -24,7 +24,7 @@ public class ContractService {
         .stream().findFirst().map(r -> (UUID)r.get("id")).orElseThrow(() -> DomainException.conflict("OFFER_REQUIRED"));
   }
   private void active(Map<String,Object> booking) {
-    if (!booking.get("status").equals("PENDING_REVIEW") || ((Number)booking.get("paid")).intValue()!=0)
+    if (!booking.get("status").equals("PENDING_REVIEW") || ((Number)booking.get("paid")).intValue()!=0 || db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Integer.class,booking.get("id"))>0)
       throw DomainException.conflict("CONTRACT_NOT_EDITABLE");
     if (db.queryForObject("SELECT count(*) FROM booking_requests WHERE booking_id=? AND status='PENDING'", Integer.class, booking.get("id")) > 0)
       throw DomainException.conflict("REQUEST_PENDING");
@@ -85,6 +85,7 @@ public class ContractService {
     audit(id,actor,"CONTRACT_SENT",doc.toString());
     db.update("INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,'EMAIL','CONTRACT_SENT',?,?)",
         UUID.randomUUID(),b.get("customer_id"),id,"A contract is ready to review in your account.",email ? "QUEUED" : "WAITING_CONFIGURATION");
+    db.update("INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,'PUSH','CONTRACT_SENT',?,'WAITING_CONFIGURATION')",UUID.randomUUID(),b.get("customer_id"),id,"Review the contract in your account.");
     return summary(document(id,doc));
   }
   public Object customer(UUID id, UUID customer) {

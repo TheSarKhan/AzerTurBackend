@@ -17,8 +17,10 @@ Implemented foundation:
 Not implemented or enabled yet:
 - Checkout sessions, payment attempts, callback settlement, reconciliation and retry handling.
 - Recording a paid staged request; no endpoint currently marks it paid.
-- Cancellation/replacement of issued requests, deposit allocation across services and refunds.
-- Payment deadlines and delivered notifications (an optional email outbox event is queued when enabled).
+- Provider-executed refunds and automatic cancellation/replacement of individual issued requests outside the reviewed cancellation/revised-plan workflow.
+
+Received-fund allocation, revised plans after partial cancellation, customer acceptance and manual refund tracking are implemented; see OFFICE_WORKFLOWS.md.
+- Payment deadlines. In-app notifications and opt-in SMTP/push delivery are implemented, with external credentials and device testing required.
 
 The new request ledger is separate from legacy booking_payments. Do not infer a staged payment from bookings.paid or change requests to PAID manually. The next implementation must validate the current contract and amount again when creating checkout, persist a unique attempt/order before contacting Epoint, and use verified server results to settle exactly once. Browser redirects cannot mark a request paid. Timeouts are unknown results requiring status reconciliation before another charge attempt.
 

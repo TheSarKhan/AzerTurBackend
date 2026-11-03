@@ -59,3 +59,6 @@ jobs:
       - name: Show API log on failure
         if: failure()
         run: tail -100 api.log || true
+
+      - name: Verify office roles, allocations, notifications and partner sync
+        run: ALLOW_LOCAL_FINANCIAL_FIXTURES=1 python3 tests/office_workflows.py

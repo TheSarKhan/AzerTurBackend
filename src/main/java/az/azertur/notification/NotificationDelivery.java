@@ -1,80 +1,33 @@
 package az.azertur.notification;
-
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.*;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import az.azertur.shared.DomainException;
 @Service
 public class NotificationDelivery {
-  private final JdbcTemplate db;
-  private final JavaMailSender mail;
-  private final boolean enabled;
-  private final String sender;
-
-  public NotificationDelivery(
-      JdbcTemplate db,
-      JavaMailSender mail,
-      @Value("${app.notifications.email-enabled:false}") boolean enabled,
-      @Value("${app.notifications.from:}") String sender) {
-    this.db = db;
-    this.mail = mail;
-    this.enabled = enabled;
-    this.sender = sender;
-  }
-
-  public Object pending() {
-    return db.queryForList(
-        "SELECT id,booking_id,channel,event,status,attempts,created_at,sent_at FROM"
-            + " notification_outbox ORDER BY created_at DESC LIMIT 200");
-  }
-
-  @Transactional
-  public void send(UUID id) {
-    if (!enabled || sender.isBlank())
-      throw az.azertur.shared.DomainException.conflict("EMAIL_NOT_CONFIGURED");
-    var rows =
-        db.queryForList(
-            "SELECT n.*,c.email,c.locale FROM notification_outbox n JOIN customers c ON"
-                + " c.id=n.customer_id WHERE n.id=? FOR UPDATE OF n",
-            id);
-    if (rows.isEmpty()) throw az.azertur.shared.DomainException.missing();
-    var n = rows.getFirst();
-    if (!n.get("channel").equals("EMAIL"))
-      throw az.azertur.shared.DomainException.conflict("PROVIDER_NOT_CONFIGURED");
-    if (n.get("status").equals("SENT")) return;
-    var message = new SimpleMailMessage();
-    message.setFrom(sender);
-    message.setTo((String) n.get("email"));
-    String locale = (String) n.get("locale");
-    String heading =
-        locale.equals("az")
-            ? "Səfəriniz yeniləndi"
-            : locale.equals("ru") ? "Ваша поездка обновлена" : "Your journey has been updated";
-    String detail =
-        locale.equals("az")
-            ? "Son vəziyyəti və ofisin cavabını hesabınızdakı Səfərlərim bölməsində görə"
-                  + " bilərsiniz."
-            : locale.equals("ru")
-                ? "Посмотрите актуальный статус и ответ офиса в разделе Мои поездки."
-                : "Open My trips in your account to see the latest status and office response.";
-    message.setSubject("Azertur — " + heading);
-    message.setText(
-        heading
-            + "\n\n"
-            + detail
-            + "\n\n"
-            + (locale.equals("az")
-                ? "Rezervasiya"
-                : locale.equals("ru") ? "Бронирование" : "Reservation")
-            + ": "
-            + n.get("booking_id"));
-    mail.send(message);
-    db.update(
-        "UPDATE notification_outbox SET status='SENT',attempts=attempts+1,sent_at=now() WHERE id=?",
-        id);
-  }
+ private final JdbcTemplate db;private final JavaMailSender mail;private final boolean enabled;private final String sender;
+ public NotificationDelivery(JdbcTemplate db,JavaMailSender mail,@Value("${app.notifications.email-enabled:false}") boolean enabled,@Value("${app.notifications.from:}") String sender){this.db=db;this.mail=mail;this.enabled=enabled;this.sender=sender;}
+ public Object pending(){return Map.of("emailConfigured",enabled&&!sender.isBlank(),"items",db.queryForList("SELECT n.id,n.booking_id,n.channel,n.event,n.status,n.attempts,n.created_at,n.sent_at,n.last_error,n.next_attempt_at,c.name AS customer_name FROM notification_outbox n JOIN customers c ON c.id=n.customer_id ORDER BY n.created_at DESC LIMIT 500"));}
+ public void retry(UUID id){if(!enabled||sender.isBlank())throw DomainException.conflict("EMAIL_NOT_CONFIGURED");if(db.update("UPDATE notification_outbox SET status='QUEUED',next_attempt_at=now(),last_error='' WHERE id=? AND channel='EMAIL' AND status IN ('FAILED','WAITING_CONFIGURATION')",id)!=1)throw DomainException.conflict("RETRY_NOT_ALLOWED");}
+ public void send(UUID id){
+  if(!enabled||sender.isBlank())throw DomainException.conflict("EMAIL_NOT_CONFIGURED");
+  // This claim commits before SMTP. A process crash or ambiguous transport failure is not retried automatically.
+  if(db.update("UPDATE notification_outbox SET status='DELIVERING',attempts=attempts+1,last_error='',next_attempt_at=now() WHERE id=? AND channel='EMAIL' AND status='QUEUED' AND next_attempt_at<=now()",id)!=1)return;
+  var n=db.queryForMap("SELECT n.booking_id,c.email,c.locale FROM notification_outbox n JOIN customers c ON c.id=n.customer_id WHERE n.id=?",id);
+  var message=new SimpleMailMessage();message.setFrom(sender);message.setTo((String)n.get("email"));
+  String l=(String)n.get("locale");String title=l.equals("az")?"Səfəriniz yeniləndi":l.equals("ru")?"Ваша поездка обновлена":"Your journey has been updated";
+  message.setSubject("Azertur — "+title);message.setText(title+"\n\n"+(l.equals("az")?"Hesabınızda son vəziyyətə baxın.":l.equals("ru")?"Посмотрите обновления в вашем аккаунте.":"Open your account to review the latest update.")+"\n"+n.get("booking_id"));
+  try{mail.send(message);db.update("UPDATE notification_outbox SET status='SENT',sent_at=now() WHERE id=? AND status='DELIVERING'",id);}
+  catch(MailAuthenticationException|MailParseException e){db.update("UPDATE notification_outbox SET status=CASE WHEN attempts<3 THEN 'QUEUED' ELSE 'FAILED' END,last_error='SMTP_AUTH_OR_MESSAGE',next_attempt_at=now()+interval '5 minutes' WHERE id=? AND status='DELIVERING'",id);}
+  catch(Exception e){db.update("UPDATE notification_outbox SET status='DELIVERY_UNKNOWN',last_error='SMTP_RESULT_UNKNOWN' WHERE id=? AND status='DELIVERING'",id);}
+ }
+ public void tick(){
+  if(!enabled||sender.isBlank())return;
+  db.update("UPDATE notification_outbox SET status='DELIVERY_UNKNOWN',last_error='WORKER_INTERRUPTED' WHERE channel='EMAIL' AND status='DELIVERING' AND next_attempt_at<now()-interval '2 minutes'");
+  db.update("UPDATE notification_outbox SET status='QUEUED' WHERE channel='EMAIL' AND status='WAITING_CONFIGURATION'");
+  for(UUID id:db.queryForList("SELECT id FROM notification_outbox WHERE channel='EMAIL' AND status='QUEUED' AND next_attempt_at<=now() ORDER BY created_at LIMIT 10",UUID.class))try{send(id);}catch(Exception ignored){}
+ }
 }

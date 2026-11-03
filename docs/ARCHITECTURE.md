@@ -45,3 +45,7 @@ Website `npm run typecheck`, `node tests/localization.mjs`, `npm run build`; `no
 ## Operator offer workflow v1
 
 See [OPERATOR_OFFERS.md](OPERATOR_OFFERS.md) for the persisted draft/preview/send workflow, private/public field separation, immutable revisions, source validation, payment gates and verification. This supersedes earlier notes that offer preparation is not implemented. Contracts and staged payments remain planned.
+
+## Office workflows update
+
+[OFFICE_WORKFLOWS.md](OFFICE_WORKFLOWS.md) supersedes the earlier planned-only notes about accounts, staged allocations, partner management and notifications. Provider payment settlement remains disabled.

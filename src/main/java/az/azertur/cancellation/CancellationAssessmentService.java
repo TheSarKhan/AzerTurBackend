@@ -33,6 +33,16 @@ public class CancellationAssessmentService {
     if(((Number)a.get("version")).longValue()!=version) throw DomainException.conflict("STALE_ASSESSMENT");
     if(a.get("state").equals("APPROVED") && a.get("request_status").equals("ACCEPTED")) return get(request);
     if(!a.get("state").equals("REVIEWED") || !a.get("request_status").equals("PENDING")) throw DomainException.conflict("CANCELLATION_NOT_PENDING");
+    var bookingState=db.queryForMap("SELECT quote_id,paid FROM bookings WHERE id=?",booking);
+    long received=((Number)bookingState.get("paid")).longValue()*100+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,booking)-db.queryForObject("SELECT coalesce(sum(allocated_minor),0) FROM cancelled_services WHERE booking_id=?",Long.class,booking);
+    if(received!=((Number)a.get("paid_minor")).longValue()||!bookingState.get("quote_id").equals(a.get("source_quote_id")))throw DomainException.conflict("STALE_ASSESSMENT");
+    var current=db.queryForList("SELECT id FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL ORDER BY accepted_at DESC LIMIT 1",booking);
+    if(current.isEmpty()||!current.getFirst().get("id").equals(a.get("contract_id")))throw DomainException.conflict("STALE_ASSESSMENT");
+    var shares=db.queryForList("SELECT payload FROM payment_allocations WHERE booking_id=?",booking);
+    if(!shares.isEmpty()){
+      var reviewed=json.readTree((String)a.get("payload")).path("lines");
+      for(var line:json.readTree((String)shares.getFirst().get("payload"))){boolean same=false;for(var old:reviewed)if(old.path("serviceKey").asText().equals(line.path("serviceKey").asText())&&old.path("calculation").path("paidMinor").asLong()==line.path("amountMinor").asLong())same=true;if(!same)throw DomainException.conflict("STALE_ASSESSMENT");}
+    }
     db.update("UPDATE cancellation_assessments SET state='APPROVED',approved_at=now() WHERE request_id=?",request);
     bookings.resolve(request,true,"Cancellation reviewed; refund plan approved. No refund has been transferred.",actor,null);
     var payload=json.readTree((String)a.get("payload"));
@@ -73,6 +83,13 @@ public class CancellationAssessmentService {
     var stored=db.queryForList("SELECT version FROM cancellation_assessments WHERE request_id=?",request);
     long version=stored.isEmpty()?0:((Number)stored.getFirst().get("version")).longValue();
     if(version!=input.version()) throw DomainException.conflict("STALE_ASSESSMENT");
+    var allocation=db.queryForList("SELECT * FROM payment_allocations WHERE booking_id=?",booking);
+    if(!allocation.isEmpty()){
+      var saved=allocation.getFirst();
+      if(!input.contractId().equals(saved.get("contract_id"))||((Number)saved.get("paid_minor")).longValue()!=paid||((Number)saved.get("cancellation_count")).intValue()!=cancelled.size())throw DomainException.conflict("CURRENT_ALLOCATION_REQUIRED");
+      var shares=new HashMap<String,Long>();for(var l:json.readTree((String)saved.get("payload")))shares.put(l.path("serviceKey").asText(),l.path("amountMinor").asLong());
+      for(var l:input.lines())if(!Objects.equals(shares.get(l.serviceKey()),l.allocatedPaidMinor()))throw DomainException.conflict("ALLOCATION_SOURCE_MISMATCH");
+    }
     var keys=new HashSet<String>(); long allocated=0,refund=0,retained=0;
     var results=new ArrayList<Object>();
     Instant requested=((java.sql.Timestamp)r.get("created_at")).toInstant();
@@ -81,9 +98,9 @@ public class CancellationAssessmentService {
       tools.jackson.databind.JsonNode service=null;
       for(var s:offer.path("services")) if(s.path("key").asText().equals(line.serviceKey())) service=s;
       if(service==null || !remaining.contains(line.serviceKey()) || !line.policyText().equals(service.path("policy").asText())) throw DomainException.conflict("POLICY_SOURCE_MISMATCH");
-      if(line.allocatedPaidMinor()>service.path("total").asLong()*100) throw DomainException.bad("INVALID_ALLOCATION");
+      if(line.allocatedPaidMinor()>service.path("total").decimalValue().movePointRight(2).longValueExact()) throw DomainException.bad("INVALID_ALLOCATION");
       if(selected.contains(line.serviceKey()) && (line.supplierReference().isBlank() || line.basis().isBlank())) throw DomainException.bad("SUPPLIER_REVIEW_REQUIRED");
-      var result=selected.contains(line.serviceKey()) ? CancellationCalculator.calculate(line.allocatedPaidMinor(),service.path("total").asLong()*100,requested,line.tiers()) : new CancellationCalculator.Result(line.allocatedPaidMinor(),0,0,requested);
+      var result=selected.contains(line.serviceKey()) ? CancellationCalculator.calculate(line.allocatedPaidMinor(),service.path("total").decimalValue().movePointRight(2).longValueExact(),requested,line.tiers()) : new CancellationCalculator.Result(line.allocatedPaidMinor(),0,0,requested);
       retained=Math.addExact(retained,result.retainedMinor());
       allocated=Math.addExact(allocated,line.allocatedPaidMinor()); refund=Math.addExact(refund,result.refundMinor());
       results.add(Map.of("cancelled",selected.contains(line.serviceKey()),"supplierReference",line.supplierReference(),"serviceKey",line.serviceKey(),"policyText",line.policyText(),"basis",line.basis(),"rules",line.tiers(),"calculation",result));

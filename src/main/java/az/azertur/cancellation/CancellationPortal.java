@@ -49,6 +49,8 @@ public class CancellationPortal {
  public Object operationsContext(UUID request) {
   var r=db.queryForList("SELECT * FROM booking_requests WHERE id=?",request).stream().findFirst().orElseThrow(DomainException::missing);
   var out=new LinkedHashMap<String,Object>(context((UUID)r.get("booking_id")));
+  var allocation=db.queryForList("SELECT payload,contract_id,paid_minor,cancellation_count FROM payment_allocations WHERE booking_id=?",r.get("booking_id"));
+  if(!allocation.isEmpty()&&Objects.equals(allocation.getFirst().get("contract_id"),out.get("contractId"))&&((Number)allocation.getFirst().get("paid_minor")).longValue()==((Number)out.get("allocatableMinor")).longValue())out.put("savedAllocation",json.readTree((String)allocation.getFirst().get("payload")));
   out.put("request",r);
   out.put("customer",db.queryForList("SELECT c.name,c.email,c.locale FROM customers c JOIN bookings b ON b.customer_id=c.id WHERE b.id=?",r.get("booking_id")).getFirst());
   var selection=db.queryForList("SELECT service_keys,reason FROM cancellation_selections WHERE request_id=?",request);
@@ -84,6 +86,8 @@ public class CancellationPortal {
     var lines=new ArrayList<Object>();
     for(var l:p.path("lines")) if(!l.has("cancelled") || l.path("cancelled").asBoolean()) lines.add(Map.of("serviceKey",l.path("serviceKey"),"policyText",l.path("policyText"),"calculation",l.path("calculation")));
     out.put("lines",lines); out.put("refundStatus",p.path("refundMinor").asLong()>0?"PENDING":"NOT_REQUIRED");
+    var tracking=db.queryForList("SELECT state,customer_message,updated_at FROM refund_tracking WHERE request_id=?",r.get("id"));
+    if(!tracking.isEmpty()){out.put("refundStatus",tracking.getFirst().get("state"));out.put("refundMessage",tracking.getFirst().get("customer_message"));out.put("refundUpdatedAt",tracking.getFirst().get("updated_at"));}
    }
    if(r.get("payload")==null && "ACCEPTED".equals(r.get("status")) && bookings.get(id).paid()==0 && db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Integer.class,id)==0) {
     out.put("paidMinor",0);out.put("retainedMinor",0);out.put("refundMinor",0);out.put("unaffectedMinor",0);out.put("currency",bookings.get(id).currency());out.put("refundStatus","NOT_REQUIRED");

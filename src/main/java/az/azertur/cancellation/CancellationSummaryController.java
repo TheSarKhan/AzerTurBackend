@@ -34,7 +34,7 @@ public class CancellationSummaryController {
    lines.add(line.path("policyText").asText());
   }
   lines.add("Refund due: "+amount(selected.path("refundMinor").asLong())+" "+currency);
-  lines.add(selected.path("refundStatus").asText().equals("NOT_REQUIRED")?"No refund is due.":"Refund pending. Funds have not been transferred.");
+  lines.add(selected.path("refundStatus").asText().equals("NOT_REQUIRED")?"No refund is due.":"Refund tracking: "+selected.path("refundStatus").asText()+". A manual completion records the office report, not bank verification.");
   lines.add(selected.path("customer_explanation").asText(""));
   byte[] bytes;
   try(var document=new PDDocument();var fontStream=new ClassPathResource("fonts/inter-400.ttf").getInputStream();var out=new ByteArrayOutputStream()) {

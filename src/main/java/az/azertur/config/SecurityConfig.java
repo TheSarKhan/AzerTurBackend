@@ -41,6 +41,11 @@ public class SecurityConfig {
                         "/swagger-ui/**",
                         "/swagger-ui.html")
                     .permitAll()
+                    .requestMatchers("/api/v1/partner-sync/**").permitAll()
+                    .requestMatchers("/api/v1/operations/staff/directory").hasRole("OPERATIONS")
+                    .requestMatchers("/api/v1/operations/partners/*/sync-key").hasRole("ADMIN")
+                    .requestMatchers("/api/v1/operations/staff", "/api/v1/operations/office-audit").hasRole("ADMIN")
+                    .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/v1/operations/bookings/*/allocation","/api/v1/operations/bookings/*/revised-plan","/api/v1/operations/refunds/*").hasRole("FINANCE")
                     .requestMatchers("/api/v1/operations/**")
                     .hasRole("OPERATIONS")
                     .anyRequest()
@@ -52,14 +57,18 @@ public class SecurityConfig {
   @Bean
   UserDetailsService users(
       @Value("${app.security.operations-user}") String user,
-      @Value("${app.security.operations-password}") String password) {
+      @Value("${app.security.operations-password}") String password, org.springframework.jdbc.core.JdbcTemplate db) {
     if (password.isBlank() || password.length() < 16)
       throw new IllegalStateException("OPERATIONS_PASSWORD must have at least 16 characters");
-    return new InMemoryUserDetailsManager(
-        User.withUsername(user)
-            .password("{bcrypt}" + new BCryptPasswordEncoder().encode(password))
-            .roles("OPERATIONS")
-            .build());
+    String encoded="{bcrypt}"+new BCryptPasswordEncoder().encode(password);
+    return username -> {
+      if(username.equals(user)) return User.withUsername(user).password(encoded).roles("OPERATIONS","ADMIN","FINANCE").build();
+      var rows=db.queryForList("SELECT * FROM staff_accounts WHERE username=? AND enabled=true",username);
+      if(rows.isEmpty()) throw new UsernameNotFoundException("Unknown account");
+      var r=rows.getFirst();String role=(String)r.get("role");
+      String[] roles=role.equals("ADMIN")?new String[]{"OPERATIONS","ADMIN","FINANCE"}:role.equals("FINANCE")?new String[]{"OPERATIONS","FINANCE"}:new String[]{"OPERATIONS"};
+      return User.withUsername(username).password((String)r.get("password_hash")).roles(roles).build();
+    };
   }
 
   @Bean
