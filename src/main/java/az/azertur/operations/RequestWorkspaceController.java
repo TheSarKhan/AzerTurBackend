@@ -14,7 +14,8 @@ import tools.jackson.databind.ObjectMapper;
 public class RequestWorkspaceController {
   private final JdbcTemplate db;
   private final ObjectMapper json;
-  public RequestWorkspaceController(JdbcTemplate db,ObjectMapper json){this.db=db;this.json=json;}
+  private final String bootstrap;
+  public RequestWorkspaceController(JdbcTemplate db,ObjectMapper json,@org.springframework.beans.factory.annotation.Value("${app.security.operations-user}") String bootstrap){this.db=db;this.json=json;this.bootstrap=bootstrap;}
 
   @GetMapping("/request-workspace")
   public Object workspace(Principal actor) {
@@ -46,13 +47,14 @@ public class RequestWorkspaceController {
       }
       row.put("stage",stage);
     }
-    return Map.of("actor",actor.getName(),"rows",rows,"activity",db.queryForList("""
+    return Map.of("actor",actor.getName(),"admin",admin(actor),"staff",db.queryForList("SELECT username,name FROM staff_accounts WHERE enabled=true UNION SELECT ?,? ORDER BY name",bootstrap,bootstrap),"rows",rows,"activity",db.queryForList("""
       SELECT a.id,a.booking_id,coalesce(c.name,a.actor) AS actor,a.action,a.created_at FROM booking_audit a
       LEFT JOIN customers c ON c.email=a.actor OR c.id::text=a.actor
       ORDER BY a.created_at DESC,a.id LIMIT 12
       """));
   }
-  public record Assignment(boolean assign,String expectedOwner){}
+  private boolean admin(Principal p){return p instanceof org.springframework.security.core.Authentication a && a.getAuthorities().stream().anyMatch(x->x.getAuthority().equals("ROLE_ADMIN"));}
+  public record Assignment(boolean assign,String expectedOwner,String assignee){}
   @PostMapping("/bookings/{id}/assignment")
   @Transactional
   public void assign(@PathVariable UUID id,@RequestBody Assignment body,Principal actor){
@@ -60,10 +62,12 @@ public class RequestWorkspaceController {
     if(row.isEmpty())throw DomainException.missing();
     String owner=(String)row.getFirst().get("assigned_to");
     if(!Objects.equals(owner,body.expectedOwner()))throw DomainException.conflict("ASSIGNMENT_CHANGED");
-    if(owner!=null&&!owner.equals(actor.getName()))throw DomainException.conflict("ASSIGNED_TO_ANOTHER_EMPLOYEE");
-    String next=body.assign()?actor.getName():null;
+    if(owner!=null&&!owner.equals(actor.getName())&&!admin(actor))throw DomainException.conflict("ASSIGNED_TO_ANOTHER_EMPLOYEE");
+    String next=body.assign()?(body.assignee()==null?actor.getName():body.assignee()):null;
+    if(next!=null&&!next.equals(actor.getName())&&!admin(actor))throw DomainException.conflict("ASSIGNMENT_NOT_ALLOWED");
+    if(next!=null&&!next.equals(bootstrap)&&db.queryForObject("SELECT count(*) FROM staff_accounts WHERE username=? AND enabled=true",Integer.class,next)==0)throw DomainException.bad("STAFF_NOT_ACTIVE");
     if(Objects.equals(owner,next))return;
     db.update("UPDATE bookings SET assigned_to=?,updated_at=now() WHERE id=?",next,id);
-    db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,?,?)",UUID.randomUUID(),id,actor.getName(),body.assign()?"ASSIGNED":"UNASSIGNED","");
+    db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,?,?)",UUID.randomUUID(),id,actor.getName(),body.assign()?"ASSIGNED":"UNASSIGNED",next==null?"":next);
   }
 }

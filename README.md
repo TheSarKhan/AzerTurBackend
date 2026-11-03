@@ -43,3 +43,7 @@ See [architecture](docs/ARCHITECTURE.md). The local `.env` is never committed.
 ## Customer review workflow update
 
 The customer registration, durable reservation request, office approval and demo-payment flows are now implemented. See [the current architecture, API and remaining production work](docs/ARCHITECTURE.md); that document supersedes the initial foundation-only notes above. No cloud deployment or live payment/provider connection is included.
+
+## Office workflows update
+
+Named staff accounts/roles, guarded assignment, received-fund allocation, customer-approved revised payment plans, separate manual refund tracking, in-app notifications, opt-in SMTP/Expo delivery and partner service/inventory sync are now implemented. See [OFFICE_WORKFLOWS.md](docs/OFFICE_WORKFLOWS.md) for exact APIs, configuration, tests and external-provider boundaries. This supersedes earlier foundation-only notes about these modules.

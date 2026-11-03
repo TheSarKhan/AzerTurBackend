@@ -29,3 +29,7 @@ GET /api/v1/operations/requests/{id}/cancellation-context provides staff context
 Pre-contract zero-payment cancellation is supported for the entire request only. Partial cancellations require an accepted contract. Paid legacy bookings without a valid accepted source require manual migration. After partial cancellation, new payment requests and offer amendments are blocked until an explicit revised plan can be reviewed; this avoids reviving cancelled services or requesting stale prices.
 
 Current refund status is PENDING or NOT_REQUIRED. No endpoint records or claims that bank funds have been returned.
+
+## Office workflow completion
+
+See [OFFICE_WORKFLOWS.md](OFFICE_WORKFLOWS.md) for persistent received-fund allocation, reviewed remaining-service plans, customer acceptance and separate manual refund tracking. Refund status may now be PROCESSING, COMPLETED_MANUAL, FAILED or UNKNOWN in addition to PENDING/NOT_REQUIRED. COMPLETED_MANUAL records the office report, not a provider-verified transfer.
