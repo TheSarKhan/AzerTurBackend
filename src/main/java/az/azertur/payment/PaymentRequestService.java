@@ -40,7 +40,7 @@ public class PaymentRequestService {
           || amount!=((Number)p.get("amount_minor")).longValue()) throw DomainException.conflict("IDEMPOTENCY_KEY_REUSED");
       return list(booking);
     }
-    var cancelled=db.queryForList("SELECT service_key FROM cancelled_services WHERE booking_id=?",booking).stream().map(x->(String)x.get("service_key")).toList();
+    var cancelled=db.queryForList("SELECT service_key FROM cancelled_services WHERE booking_id=? AND service_revision=(SELECT service_revision FROM bookings WHERE id=?)",booking,booking).stream().map(x->(String)x.get("service_key")).toList();
     if(!cancelled.isEmpty()&&!finance.planCurrent(booking)) throw DomainException.conflict("PAYMENT_PLAN_REVIEW_REQUIRED");
     if (!Set.of("PENDING_REVIEW","CONFIRMED").contains(b.get("status")))
       throw DomainException.conflict("PAYMENT_WORKFLOW_CONFLICT");
@@ -55,10 +55,10 @@ public class PaymentRequestService {
       boolean found=false;
       for (var service:offer.path("services")) if (service.path("key").asText().equals(input.serviceKey())) found=true;
       if (!found || cancelled.contains(input.serviceKey())) throw DomainException.bad("INVALID_SERVICE_KEY");
-      if (db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND kind='DEPOSIT' AND status='PAID'",Integer.class,booking)==0)
+      if (PaymentFunds.received(db,booking)==0)
         throw DomainException.conflict("DEPOSIT_REQUIRED");
     }
-    long received=((Number)b.get("paid")).longValue()*100+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,booking)-db.queryForObject("SELECT coalesce(sum(allocated_minor),0) FROM cancelled_services WHERE booking_id=?",Long.class,booking);
+    long received=PaymentFunds.active(db,booking);
     long allocated=received+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='OPEN'",Long.class,booking);
     if(input.kind().equals("SERVICE")){
       var allocation=finance.context(booking);if(!Boolean.TRUE.equals(allocation.get("allocationCurrent")))throw DomainException.conflict("CURRENT_ALLOCATION_REQUIRED");

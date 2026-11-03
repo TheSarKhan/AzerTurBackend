@@ -28,10 +28,10 @@ public class SecurityConfig {
             a ->
                 a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR)
                     .permitAll()
-                    .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login")
+                    .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-email")
                     .permitAll()
                     .requestMatchers(
-                        "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/bookings/**")
+                        "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/logout-all", "/api/v1/auth/email-verification/**", "/api/v1/auth/sessions/**", "/api/v1/bookings/**")
                     .hasRole("CUSTOMER")
                     .requestMatchers(
                         "/actuator/health",
@@ -45,7 +45,7 @@ public class SecurityConfig {
                     .requestMatchers("/api/v1/operations/staff/directory").hasRole("OPERATIONS")
                     .requestMatchers("/api/v1/operations/partners/*/sync-key").hasRole("ADMIN")
                     .requestMatchers("/api/v1/operations/staff", "/api/v1/operations/office-audit").hasRole("ADMIN")
-                    .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/v1/operations/bookings/*/allocation","/api/v1/operations/bookings/*/revised-plan","/api/v1/operations/refunds/*").hasRole("FINANCE")
+                    .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/v1/operations/bookings/*/allocation","/api/v1/operations/bookings/*/revised-plan","/api/v1/operations/refunds/*","/api/v1/operations/requests/*/amendment/send").hasRole("FINANCE")
                     .requestMatchers("/api/v1/operations/**")
                     .hasRole("OPERATIONS")
                     .anyRequest()

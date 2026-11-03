@@ -13,16 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CustomerAuthService {
-  public record Customer(UUID id, String email, String name, String locale) {}
+  public record Customer(UUID id, String email, String name, String locale, boolean emailVerified) {}
 
   public record Session(String token, Instant expires, Customer customer) {}
 
   private final JdbcTemplate db;
+  private final AccountSecurityService security;
   private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
   private final String dummyHash = encoder.encode("non-user timing comparison");
   private final SecureRandom random = new SecureRandom();
 
-  public CustomerAuthService(JdbcTemplate db) {
+  public CustomerAuthService(JdbcTemplate db,AccountSecurityService security) {
+    this.security=security;
     this.db = db;
   }
 
@@ -37,7 +39,7 @@ public class CustomerAuthService {
   }
 
   @Transactional
-  public Session register(String email, String password, String name, String locale) {
+  public Session register(String email, String password, String name, String locale, String userAgent) {
     if (password.getBytes(StandardCharsets.UTF_8).length > 72)
       throw DomainException.bad("PASSWORD_TOO_LONG");
     UUID id = UUID.randomUUID();
@@ -53,21 +55,22 @@ public class CustomerAuthService {
     } catch (org.springframework.dao.DuplicateKeyException e) {
       throw DomainException.conflict("ACCOUNT_UNAVAILABLE");
     }
-    return createSession(new Customer(id, normalized, name.trim(), locale));
+    security.verification(id);
+    return createSession(new Customer(id, normalized, name.trim(), locale,false),userAgent);
   }
 
   @Transactional
-  public Session login(String email, String password) {
+  public Session login(String email, String password,String userAgent) {
     var rows =
         db.query(
-            "SELECT * FROM customers WHERE email=?",
+            "SELECT * FROM customers WHERE email=? FOR UPDATE",
             (r, n) ->
                 Map.entry(
                     new Customer(
                         r.getObject("id", UUID.class),
                         r.getString("email"),
                         r.getString("name"),
-                        r.getString("locale")),
+                        r.getString("locale"),r.getTimestamp("email_verified_at")!=null),
                     r.getString("password_hash")),
             email.trim().toLowerCase(Locale.ROOT));
     String encoded = rows.isEmpty() ? dummyHash : rows.getFirst().getValue();
@@ -75,24 +78,25 @@ public class CustomerAuthService {
         || !encoder.matches(password, encoded)
         || rows.isEmpty())
       throw new DomainException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS");
-    return createSession(rows.getFirst().getKey());
+    return createSession(rows.getFirst().getKey(),userAgent);
   }
 
-  private Session createSession(Customer customer) {
+  private Session createSession(Customer customer,String userAgent) {
     byte[] bytes = new byte[32];
     random.nextBytes(bytes);
     String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     Instant expires = Instant.now().plus(Duration.ofDays(7));
     db.update(
-        "INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES(?,?,?)",
+        "INSERT INTO customer_sessions(token_hash,customer_id,expires_at,device) VALUES(?,?,?,?)",
         hash(token),
         customer.id(),
-        java.sql.Timestamp.from(expires));
+        java.sql.Timestamp.from(expires),device(userAgent));
     return new Session(token, expires, customer);
   }
 
   public Optional<Customer> authenticate(String token) {
     if (token == null || token.length() > 128) return Optional.empty();
+    db.update("UPDATE customer_sessions SET last_seen_at=now() WHERE token_hash=? AND expires_at>now() AND last_seen_at<now()-interval '5 minutes'",hash(token));
     return db
         .query(
             "SELECT c.* FROM customers c JOIN customer_sessions s ON s.customer_id=c.id WHERE"
@@ -102,12 +106,18 @@ public class CustomerAuthService {
                     r.getObject("id", UUID.class),
                     r.getString("email"),
                     r.getString("name"),
-                    r.getString("locale")),
+                    r.getString("locale"),r.getTimestamp("email_verified_at")!=null),
             hash(token))
         .stream()
         .findFirst();
   }
 
+  private String device(String value) {
+    String ua=value==null?"":value.substring(0,Math.min(512,value.length()));
+    String browser=ua.contains("Firefox")?"Firefox":ua.contains("Edg/")?"Edge":ua.contains("Chrome")?"Chrome":ua.contains("Safari")?"Safari":"Browser";
+    String system=ua.contains("Android")?"Android":ua.contains("iPhone")?"iPhone":ua.contains("iPad")?"iPad":ua.contains("Macintosh")?"Mac":ua.contains("Windows")?"Windows":ua.contains("Linux")?"Linux":"Other device";
+    return system.equals("Other device")?system:browser+" / "+system;
+  }
   public void logout(String token) {
     db.update("DELETE FROM customer_sessions WHERE token_hash=?", hash(token));
   }

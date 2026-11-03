@@ -141,7 +141,7 @@ public class OfferService {
         .orElseThrow(DomainException::missing);
   }
 
-  private int amount(Line line) {
+  public static int amount(Line line) {
     return line.unitPrice().multiply(BigDecimal.valueOf(line.quantity())).multiply(BigDecimal.valueOf(line.nights())).setScale(0,RoundingMode.HALF_UP).intValueExact();
   }
 

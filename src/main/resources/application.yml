@@ -48,6 +48,8 @@ app:
     from: ${SMTP_FROM:}
   cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081}
   security:
+    account-link-key: ${ACCOUNT_LINK_KEY}
+    portal-origin: ${PORTAL_ORIGIN:http://127.0.0.1:4182}
     operations-user: ${OPERATIONS_USER:operations}
     operations-password: ${OPERATIONS_PASSWORD}
 management:

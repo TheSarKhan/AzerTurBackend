@@ -47,3 +47,7 @@ The customer registration, durable reservation request, office approval and demo
 ## Office workflows update
 
 Named staff accounts/roles, guarded assignment, received-fund allocation, customer-approved revised payment plans, separate manual refund tracking, in-app notifications, opt-in SMTP/Expo delivery and partner service/inventory sync are now implemented. See [OFFICE_WORKFLOWS.md](docs/OFFICE_WORKFLOWS.md) for exact APIs, configuration, tests and external-provider boundaries. This supersedes earlier foundation-only notes about these modules.
+
+## Account security and paid changes
+
+Email verification, password recovery and session revocation now protect customer writes. Paid changes use a separately reviewed proposal and exact PDF acceptance before the effective booking changes. See [setup, workflow and verification](docs/ACCOUNT_SECURITY_AMENDMENTS.md). This work is stacked on `feature/complete-office-workflows`; live delivery still needs the configured server SMTP environment.

@@ -34,12 +34,12 @@ public class CancellationPortal {
     offer=json.valueToTree(Map.of("title",b.title(),"currency",b.currency(),"date",b.departure().toString(),"travelers",quote.path("input").path("pax").asInt(),"services",serviceList));
    }
   } else {contractId=(UUID)rows.getFirst().get("id");offer=json.readTree((String)rows.getFirst().get("payload"));}
-  var cancelled=db.queryForList("SELECT service_key FROM cancelled_services WHERE booking_id=?",id).stream().map(r -> (String)r.get("service_key")).toList();
+  var cancelled=db.queryForList("SELECT service_key FROM cancelled_services WHERE booking_id=? AND service_revision=(SELECT service_revision FROM bookings WHERE id=?)",id,id).stream().map(r -> (String)r.get("service_key")).toList();
   var services=new ArrayList<JsonNode>();
   for(var s:offer.path("services")) if(!cancelled.contains(s.path("key").asText())) services.add(s);
-  long paid=b.paid()*100L+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,id);
+  long paid=az.azertur.payment.PaymentFunds.received(db,id);
   if(contractId==null && paid>0) throw DomainException.conflict("ACCEPTED_CONTRACT_REQUIRED");
-  long allocated=db.queryForObject("SELECT coalesce(sum(allocated_minor),0) FROM cancelled_services WHERE booking_id=?",Long.class,id);
+  long allocated=az.azertur.payment.PaymentFunds.retired(db,id);
   var out=new LinkedHashMap<String,Object>();out.put("contractId",contractId);out.put("offer",offer);out.put("services",services);out.put("paidMinor",paid);out.put("allocatableMinor",paid-allocated);out.put("bookingStatus",b.status());out.put("contractVersion",rows.isEmpty()?0:rows.getFirst().get("version"));return out;
  }
  public Object customerContext(UUID id,UUID customer) {

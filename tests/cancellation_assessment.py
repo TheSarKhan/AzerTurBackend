@@ -11,6 +11,8 @@ def call(path,body=None,auth=None):
    raw=r.read();return r.status,json.loads(raw) if raw else None
  except urllib.error.HTTPError as e:
   raw=e.read();return e.code,json.loads(raw) if raw else None
+from qa_accounts import verified
+call=verified(call)
 suffix=uuid.uuid4().hex
 registration={'name':'Offer Integration QA','email':'offer-'+suffix+'@example.com','password':'Local-test-only-strong-password-2026','locale':'en'}
 status,session=call('auth/register',registration);assert status==201,(status,session)

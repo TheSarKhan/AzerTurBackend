@@ -29,6 +29,9 @@ public class CustomerTokenFilter extends OncePerRequestFilter {
         res.getWriter().write("{\"error\":\"UNAUTHENTICATED\"}");
         return;
       }
+      if(req.getMethod().equals("POST") && req.getRequestURI().startsWith("/api/v1/bookings") && !req.getRequestURI().startsWith("/api/v1/bookings/notifications") && !customer.get().emailVerified()) {
+        res.setStatus(403);res.setContentType("application/json");res.getWriter().write("{\"error\":\"EMAIL_VERIFICATION_REQUIRED\"}");return;
+      }
       var context = SecurityContextHolder.createEmptyContext();
       context.setAuthentication(
           new UsernamePasswordAuthenticationToken(

@@ -169,6 +169,7 @@ public class BookingService {
     Booking b = lock(id);
     own(b, customer);
     if (!demoPayments) throw DomainException.conflict("DEMO_PAYMENTS_DISABLED");
+    if(db.queryForObject("SELECT count(*) FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL",Integer.class,id)>0)throw DomainException.conflict("STAGED_PAYMENT_WORKFLOW_REQUIRED");
     var previous =
         db.queryForList(
             "SELECT * FROM booking_payments WHERE customer_id=? AND idempotency_key=?",
@@ -277,8 +278,7 @@ public class BookingService {
     if (accept && List.of("CANCELLED", "REJECTED").contains(b.status()))
       throw DomainException.conflict("REQUEST_NOT_ALLOWED");
     if (accept && "CANCEL".equals(r.get("kind"))) {
-      long received=b.paid()*100L+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,booking);
-      received-=db.queryForObject("SELECT coalesce(sum(allocated_minor),0) FROM cancelled_services WHERE booking_id=?",Long.class,booking);
+      long received=az.azertur.payment.PaymentFunds.active(db,booking);
       var accepted=db.queryForList("SELECT id FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL ORDER BY accepted_at DESC LIMIT 1",booking);
       if(received>0 || !accepted.isEmpty()) {
         var plans=db.queryForList("SELECT * FROM cancellation_assessments WHERE request_id=? AND state='APPROVED'",request);
@@ -289,7 +289,9 @@ public class BookingService {
           throw DomainException.conflict("STALE_ASSESSMENT");
       }
     }
+    if(!accept)db.update("UPDATE amendment_versions SET state='WITHDRAWN' WHERE request_id=? AND state='SENT'",request);
     if (accept && "CHANGE".equals(r.get("kind"))) {
+      if(az.azertur.payment.PaymentFunds.received(db,booking)>0||db.queryForObject("SELECT count(*) FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL",Integer.class,booking)>0)throw DomainException.conflict("AMENDMENT_WORKFLOW_REQUIRED");
       if(db.queryForObject("SELECT count(*) FROM cancelled_services WHERE booking_id=?",Integer.class,booking)>0) throw DomainException.conflict("PARTIAL_CANCELLATION_REQUIRES_MANUAL_REVIEW");
       if (replacementQuote == null) throw DomainException.bad("REPLACEMENT_QUOTE_REQUIRED");
       var priced =

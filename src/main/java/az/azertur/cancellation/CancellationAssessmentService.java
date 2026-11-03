@@ -34,7 +34,7 @@ public class CancellationAssessmentService {
     if(a.get("state").equals("APPROVED") && a.get("request_status").equals("ACCEPTED")) return get(request);
     if(!a.get("state").equals("REVIEWED") || !a.get("request_status").equals("PENDING")) throw DomainException.conflict("CANCELLATION_NOT_PENDING");
     var bookingState=db.queryForMap("SELECT quote_id,paid FROM bookings WHERE id=?",booking);
-    long received=((Number)bookingState.get("paid")).longValue()*100+db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,booking)-db.queryForObject("SELECT coalesce(sum(allocated_minor),0) FROM cancelled_services WHERE booking_id=?",Long.class,booking);
+    long received=az.azertur.payment.PaymentFunds.active(db,booking);
     if(received!=((Number)a.get("paid_minor")).longValue()||!bookingState.get("quote_id").equals(a.get("source_quote_id")))throw DomainException.conflict("STALE_ASSESSMENT");
     var current=db.queryForList("SELECT id FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL ORDER BY accepted_at DESC LIMIT 1",booking);
     if(current.isEmpty()||!current.getFirst().get("id").equals(a.get("contract_id")))throw DomainException.conflict("STALE_ASSESSMENT");
@@ -49,7 +49,7 @@ public class CancellationAssessmentService {
     var selected=new HashSet<String>();
     for(var line:payload.path("lines")) if(!line.has("cancelled") || line.path("cancelled").asBoolean()) {
       selected.add(line.path("serviceKey").asText());
-      db.update("INSERT INTO cancelled_services(booking_id,service_key,request_id,allocated_minor) VALUES(?,?,?,?)",booking,line.path("serviceKey").asText(),request,line.path("calculation").path("paidMinor").asLong());
+      db.update("INSERT INTO cancelled_services(booking_id,service_key,request_id,allocated_minor,service_revision) SELECT ?,?,?,?,service_revision FROM bookings WHERE id=?",booking,line.path("serviceKey").asText(),request,line.path("calculation").path("paidMinor").asLong(),booking);
     }
     if(payload.path("fullCancellation").asBoolean(true)) db.update("UPDATE staged_payment_requests SET status='CANCELLED' WHERE booking_id=? AND status='OPEN'",booking);
     else for(String key:selected) db.update("UPDATE staged_payment_requests SET status='CANCELLED' WHERE booking_id=? AND service_key=? AND status='OPEN'",booking,key);
@@ -69,10 +69,8 @@ public class CancellationAssessmentService {
     var c=db.queryForList("SELECT d.id,o.payload FROM contract_documents d JOIN offer_revisions o ON o.id=d.offer_id WHERE d.booking_id=? AND d.accepted_at IS NOT NULL AND o.source_quote_id=? ORDER BY d.accepted_at DESC LIMIT 1",booking,b.get("quote_id"));
     if(c.isEmpty() || !input.contractId().equals(c.getFirst().get("id"))) throw DomainException.conflict("ACCEPTED_CONTRACT_REQUIRED");
     var offer=json.readTree((String)c.getFirst().get("payload"));
-    long paid=((Number)b.get("paid")).longValue()*100;
-    paid+=db.queryForObject("SELECT coalesce(sum(amount_minor),0) FROM staged_payment_requests WHERE booking_id=? AND status='PAID'",Long.class,booking);
-    paid-=db.queryForObject("SELECT coalesce(sum(allocated_minor),0) FROM cancelled_services WHERE booking_id=?",Long.class,booking);
-    var cancelled=db.queryForList("SELECT service_key FROM cancelled_services WHERE booking_id=?",booking).stream().map(x -> (String)x.get("service_key")).toList();
+    long paid=az.azertur.payment.PaymentFunds.active(db,booking);
+    var cancelled=db.queryForList("SELECT service_key FROM cancelled_services WHERE booking_id=? AND service_revision=(SELECT service_revision FROM bookings WHERE id=?)",booking,booking).stream().map(x -> (String)x.get("service_key")).toList();
     var remaining=new HashSet<String>();
     for(var service:offer.path("services")) if(!cancelled.contains(service.path("key").asText())) remaining.add(service.path("key").asText());
     var selection=db.queryForList("SELECT service_keys FROM cancellation_selections WHERE request_id=?",request);
@@ -86,7 +84,7 @@ public class CancellationAssessmentService {
     var allocation=db.queryForList("SELECT * FROM payment_allocations WHERE booking_id=?",booking);
     if(!allocation.isEmpty()){
       var saved=allocation.getFirst();
-      if(!input.contractId().equals(saved.get("contract_id"))||((Number)saved.get("paid_minor")).longValue()!=paid||((Number)saved.get("cancellation_count")).intValue()!=cancelled.size())throw DomainException.conflict("CURRENT_ALLOCATION_REQUIRED");
+      if(!input.contractId().equals(saved.get("contract_id"))||((Number)saved.get("paid_minor")).longValue()!=paid||((Number)saved.get("cancellation_count")).intValue()!=db.queryForObject("SELECT count(*) FROM cancelled_services WHERE booking_id=?",Integer.class,booking))throw DomainException.conflict("CURRENT_ALLOCATION_REQUIRED");
       var shares=new HashMap<String,Long>();for(var l:json.readTree((String)saved.get("payload")))shares.put(l.path("serviceKey").asText(),l.path("amountMinor").asLong());
       for(var l:input.lines())if(!Objects.equals(shares.get(l.serviceKey()),l.allocatedPaidMinor()))throw DomainException.conflict("ALLOCATION_SOURCE_MISMATCH");
     }
