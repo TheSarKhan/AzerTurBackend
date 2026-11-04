@@ -6,6 +6,21 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      target:
+        description: Component to deploy
+        type: choice
+        options: [api, mobile-web]
+        default: api
+      mobile_action:
+        description: Inspect infrastructure or deploy the mobile web client
+        type: choice
+        options: [inspect, deploy]
+        default: inspect
+      mobile_ref:
+        description: Exact tested mobile-client commit
+        type: string
+        default: 3f120313293a8dced58208d8007b3781b79ef425
 permissions:
   contents: read
 concurrency:
@@ -13,7 +28,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && inputs.target != 'mobile-web'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -56,4 +71,43 @@ jobs:
             sleep 5
           done
           docker images aztrip-api --format '{{.Repository}}:{{.Tag}}' | grep -v ':latest$' | tail -n +4 | xargs -r docker rmi || true
+          REMOTE
+
+  mobile-web:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'mobile-web'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: deploy-mobile-web
+      cancel-in-progress: false
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+    steps:
+      - name: Configure existing deployment SSH identity
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Inspect Aztrip service topology without printing secrets
+        if: inputs.mobile_action == 'inspect'
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 - <<'REMOTE'
+          import subprocess,json,pathlib,shutil
+          result=subprocess.run(['docker','compose','config','--format','json'],cwd='/opt/aztrip',capture_output=True,text=True,check=True)
+          config=json.loads(result.stdout)
+          for name,service in config['services'].items():
+              print(json.dumps({'service':name,'image':service.get('image'),'ports':service.get('ports'),'cors':service.get('environment',{}).get('CORS_ORIGINS'),'environmentKeys':sorted(service.get('environment',{}))}))
+          print('Proxy binaries: '+', '.join(n for n in ['nginx','caddy','certbot'] if shutil.which(n)))
+          paths=list(pathlib.Path('/etc/nginx/sites-enabled').glob('*aztrip*'))+list(pathlib.Path('/etc/nginx/conf.d').glob('*aztrip*'))
+          for path in paths:
+              print('Proxy file: '+str(path))
+              for line in path.read_text().splitlines():
+                  if line.strip().startswith(('server_name','listen','ssl_certificate','location','proxy_pass')):
+                      print(line.strip())
+          print('TLS directories: '+', '.join(str(p) for p in pathlib.Path('/etc/letsencrypt/live').glob('*aztrip*')))
           REMOTE
