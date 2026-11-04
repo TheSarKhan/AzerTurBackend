@@ -51,3 +51,7 @@ Named staff accounts/roles, guarded assignment, received-fund allocation, custom
 ## Account security and paid changes
 
 Email verification, password recovery and session revocation now protect customer writes. Paid changes use a separately reviewed proposal and exact PDF acceptance before the effective booking changes. See [setup, workflow and verification](docs/ACCOUNT_SECURITY_AMENDMENTS.md). This work is stacked on `feature/complete-office-workflows`; live delivery still needs the configured server SMTP environment.
+
+## Transactional email
+
+Resend SMTP uses server-only credentials and the configured aztrip.online sender. See [docs/RESEND.md](docs/RESEND.md) for sender verification, the delivery cutover boundary and activation checks.

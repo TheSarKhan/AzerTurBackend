@@ -4,13 +4,15 @@ spring:
       max-file-size: 10MB
       max-request-size: 11MB
   mail:
-    host: ${SMTP_HOST:smtp.gmail.com}
+    host: ${SMTP_HOST:smtp.resend.com}
     port: ${SMTP_PORT:587}
-    username: ${SMTP_USERNAME:}
+    username: ${SMTP_USERNAME:resend}
     password: ${SMTP_PASSWORD:}
     properties:
       "[mail.smtp.auth]": true
       "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.starttls.required]": true
+      "[mail.smtp.ssl.checkserveridentity]": true
       "[mail.smtp.connectiontimeout]": 5000
       "[mail.smtp.timeout]": 5000
       "[mail.smtp.writetimeout]": 5000
@@ -45,6 +47,7 @@ app:
     push-enabled: ${PUSH_ENABLED:false}
     expo-access-token: ${EXPO_ACCESS_TOKEN:}
     email-enabled: ${EMAIL_ENABLED:false}
+    email-not-before: ${EMAIL_DELIVERY_NOT_BEFORE:1970-01-01T00:00:00Z}
     from: ${SMTP_FROM:}
   cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081}
   security:

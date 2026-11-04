@@ -30,6 +30,7 @@ public class AccountSecurityService {
   private final byte[] key;
   private final String origin, sender;
   private final boolean email;
+  private final java.sql.Timestamp notBefore;
   private final SecureRandom random = new SecureRandom();
 
   public AccountSecurityService(JdbcTemplate db, ObjectMapper json, JavaMailSender mail,
@@ -37,7 +38,8 @@ public class AccountSecurityService {
       @Value("${app.security.account-link-key}") String secret,
       @Value("${app.security.portal-origin}") String origin,
       @Value("${app.notifications.email-enabled:false}") boolean email,
-      @Value("${app.notifications.from:}") String sender) {
+      @Value("${app.notifications.from:}") String sender,
+      @Value("${app.notifications.email-not-before:1970-01-01T00:00:00Z}") Instant notBefore) {
     this.db=db; this.json=json; this.mail=mail; this.tx=new TransactionTemplate(transactions);
     try { key=Base64.getDecoder().decode(secret); }
     catch (Exception e) { throw new IllegalStateException("ACCOUNT_LINK_KEY must be base64 for 32 random bytes"); }
@@ -47,7 +49,7 @@ public class AccountSecurityService {
         || !(uri.getPath().isEmpty()||uri.getPath().equals("/"))
         || !(uri.getScheme().equals("https") || uri.getScheme().equals("http") && Set.of("localhost","127.0.0.1","[::1]").contains(uri.getHost())))
       throw new IllegalStateException("PORTAL_ORIGIN must be a trusted HTTPS origin (HTTP is allowed on loopback only)");
-    this.origin=origin.replaceAll("/+$",""); this.email=email; this.sender=sender;
+    this.origin=origin.replaceAll("/+$",""); this.email=email; this.sender=sender; this.notBefore=java.sql.Timestamp.from(notBefore);
   }
 
   private String hash(String value) {
@@ -99,7 +101,7 @@ public class AccountSecurityService {
   public void verification(UUID id) {
     var c=customer(id);
     if(c.get("email_verified_at")!=null) return;
-    if(db.queryForObject("SELECT count(*) FROM account_mail_jobs j JOIN account_links l ON l.id=j.link_id WHERE j.customer_id=? AND j.purpose='VERIFY' AND j.state IN ('QUEUED','WAITING_CONFIGURATION','SENDING') AND l.consumed_at IS NULL AND l.expires_at>now()",Integer.class,id)>0) return;
+    if(db.queryForObject("SELECT count(*) FROM account_mail_jobs j JOIN account_links l ON l.id=j.link_id WHERE j.customer_id=? AND j.purpose='VERIFY' AND j.state IN ('QUEUED','WAITING_CONFIGURATION','SENDING') AND l.consumed_at IS NULL AND l.expires_at>now() AND j.created_at>=?",Integer.class,id,notBefore)>0) return;
     UUID job=UUID.randomUUID();
     db.update("INSERT INTO account_mail_jobs(id,customer_id,purpose,state) VALUES(?,?,'VERIFY','QUEUED')",job,id);
     queueLink(job,c,"VERIFY");
@@ -177,12 +179,12 @@ public class AccountSecurityService {
     db.update("UPDATE account_mail_jobs j SET state='REVOKED',cipher=null,nonce=null WHERE link_id IS NOT NULL AND EXISTS(SELECT 1 FROM account_links l WHERE l.id=j.link_id AND (l.consumed_at IS NOT NULL OR l.expires_at<=now())) AND j.cipher IS NOT NULL");
     if(!email || sender.isBlank()) return;
     db.update("UPDATE account_mail_jobs SET state='UNKNOWN' WHERE state='SENDING' AND next_attempt_at<now()-interval '2 minutes'");
-    db.update("UPDATE account_mail_jobs SET state='QUEUED' WHERE state='WAITING_CONFIGURATION'");
-    for(UUID id:db.queryForList("SELECT id FROM account_mail_jobs WHERE purpose<>'RESET_REQUEST' AND state='QUEUED' AND next_attempt_at<=now() ORDER BY created_at LIMIT 10",UUID.class)) deliver(id);
+    db.update("UPDATE account_mail_jobs SET state='QUEUED' WHERE state='WAITING_CONFIGURATION' AND created_at>=?",notBefore);
+    for(UUID id:db.queryForList("SELECT id FROM account_mail_jobs WHERE purpose<>'RESET_REQUEST' AND state='QUEUED' AND next_attempt_at<=now() AND created_at>=? ORDER BY created_at LIMIT 10",UUID.class,notBefore)) deliver(id);
   }
   public void deliver(UUID id) {
     if(!email||sender.isBlank()) return;
-    if(db.update("UPDATE account_mail_jobs SET state='SENDING',attempts=attempts+1,next_attempt_at=now() WHERE id=? AND state='QUEUED' AND purpose<>'RESET_REQUEST' AND cipher IS NOT NULL",id)!=1) return;
+    if(db.update("UPDATE account_mail_jobs SET state='SENDING',attempts=attempts+1,next_attempt_at=now() WHERE id=? AND state='QUEUED' AND purpose<>'RESET_REQUEST' AND cipher IS NOT NULL AND created_at>=?",id,notBefore)!=1) return;
     var jobs=db.queryForList("SELECT j.*,c.email FROM account_mail_jobs j JOIN customers c ON c.id=j.customer_id WHERE j.id=? AND j.state='SENDING' AND j.cipher IS NOT NULL",id);
     if(jobs.isEmpty()) return;
     try {
