@@ -50,4 +50,20 @@ class MailCutoverIntegrationTest {
   assertEquals("SENT",db.queryForObject("SELECT state FROM account_mail_jobs WHERE id=?",String.class,newJob));
   verify(mail,times(2)).send(any(SimpleMailMessage.class));
  }
+ @Test void requestingVerificationAfterCutoverReplacesAnUnsentHistoricalRequest() {
+  String url=System.getenv("MAIL_CUTOVER_JDBC_URL");
+  assertNotNull(url);assertTrue(url.matches("jdbc:postgresql://(localhost|127\\.0\\.0\\.1):5432/azertur_qa_mail_cutover_[a-z0-9_]+"));
+  var ds=new DriverManagerDataSource(url,"azertur",System.getenv("DATABASE_PASSWORD"));
+  Flyway.configure().dataSource(ds).load().migrate();var db=new JdbcTemplate(ds);var mail=mock(JavaMailSender.class);
+  Instant cutoff=Instant.now().minusSeconds(60);UUID customer=UUID.randomUUID();
+  db.update("INSERT INTO customers(id,email,name,password_hash,locale) VALUES(?,?,'Verification cutover QA','not-a-real-password-hash','en')",customer,"verify-cutover-"+customer+"@example.com");
+  var security=new AccountSecurityService(db,new ObjectMapper(),mail,new DataSourceTransactionManager(ds),Base64.getEncoder().encodeToString(new byte[32]),"http://127.0.0.1:4182",true,"qa@example.com",cutoff);
+  security.verification(customer);UUID old=db.queryForObject("SELECT id FROM account_mail_jobs WHERE customer_id=?",UUID.class,customer);
+  db.update("UPDATE account_mail_jobs SET created_at=?,state='WAITING_CONFIGURATION' WHERE id=?",Timestamp.from(cutoff.minusSeconds(1)),old);
+  security.verification(customer);security.verification(customer);
+  assertEquals(2,db.queryForObject("SELECT count(*) FROM account_mail_jobs WHERE customer_id=?",Integer.class,customer));
+  UUID fresh=db.queryForObject("SELECT id FROM account_mail_jobs WHERE customer_id=? AND id<>?",UUID.class,customer,old);
+  security.deliver(old);verifyNoInteractions(mail);security.deliver(fresh);security.deliver(fresh);verify(mail,times(1)).send(any(SimpleMailMessage.class));
+ }
+
 }

@@ -24,6 +24,6 @@ Activation must not send historical development notifications. Set EMAIL_DELIVER
 
 `./mvnw verify` covers the mail state-machine tests. The opt-in MailCutoverIntegrationTest creates the actual schema in a dedicated loopback PostgreSQL QA database and uses a mocked JavaMailSender. It verifies that old queued/waiting jobs cannot send or promote while new jobs send once. CI runs this check in its own database. Local invocation requires AZERTUR_MAIL_CUTOVER_TEST=1, DATABASE_PASSWORD and MAIL_CUTOVER_JDBC_URL pointing to jdbc:postgresql://127.0.0.1:5432/azertur_qa_mail_cutover_<suffix>.
 
-A single separately authorized external test was attempted with the configured sender; the relay rejected the sender domain as unverified for that key. Automatic delivery remains disabled until the account/domain/key mismatch is resolved. No historical outbox was sent. A later successful test should be recorded separately from inbox-delivery confirmation.
+Live validation succeeded after domain verification: the configured sender was accepted for one authorized external test through the actual Spring SMTP transport. Automatic delivery is enabled in the ignored local environment with the persisted historical-job boundary. Inbox receipt remains a separate user check. Verification resend also excludes historical held jobs from deduplication, allowing an existing unverified customer to request a fresh link after activation. PostgreSQL integration tests cover that transition without sending email.
 
 Official settings: https://resend.com/docs/send-with-smtp

@@ -101,7 +101,7 @@ public class AccountSecurityService {
   public void verification(UUID id) {
     var c=customer(id);
     if(c.get("email_verified_at")!=null) return;
-    if(db.queryForObject("SELECT count(*) FROM account_mail_jobs j JOIN account_links l ON l.id=j.link_id WHERE j.customer_id=? AND j.purpose='VERIFY' AND j.state IN ('QUEUED','WAITING_CONFIGURATION','SENDING') AND l.consumed_at IS NULL AND l.expires_at>now()",Integer.class,id)>0) return;
+    if(db.queryForObject("SELECT count(*) FROM account_mail_jobs j JOIN account_links l ON l.id=j.link_id WHERE j.customer_id=? AND j.purpose='VERIFY' AND j.state IN ('QUEUED','WAITING_CONFIGURATION','SENDING') AND l.consumed_at IS NULL AND l.expires_at>now() AND j.created_at>=?",Integer.class,id,notBefore)>0) return;
     UUID job=UUID.randomUUID();
     db.update("INSERT INTO account_mail_jobs(id,customer_id,purpose,state) VALUES(?,?,'VERIFY','QUEUED')",job,id);
     queueLink(job,c,"VERIFY");
