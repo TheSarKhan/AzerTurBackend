@@ -40,6 +40,18 @@ jobs:
           java-version: 21
           cache: maven
       - run: ./mvnw -B verify
+      - name: Verify email cutover without sending email
+        env:
+          AZERTUR_MAIL_CUTOVER_TEST: "1"
+          MAIL_CUTOVER_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/azertur_qa_mail_cutover_ci
+        run: |
+          python3 - <<'PYTEST'
+          import subprocess
+          ids=subprocess.check_output(['docker','ps','--filter','ancestor=postgres:17-alpine','--format','{{.ID}}'],text=True).splitlines()
+          assert len(ids)==1, 'Expected one CI PostgreSQL service'
+          subprocess.run(['docker','exec',ids[0],'psql','-U','azertur','-d','postgres','-v','ON_ERROR_STOP=1','-c','CREATE DATABASE azertur_qa_mail_cutover_ci'],check=True)
+          PYTEST
+          ./mvnw -B -Dtest=MailCutoverIntegrationTest test
       - name: Start integration API
         run: java -jar target/backend-0.0.1-SNAPSHOT.jar > api.log 2>&1 &
       - name: Wait for API

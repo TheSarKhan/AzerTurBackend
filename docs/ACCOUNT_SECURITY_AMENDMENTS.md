@@ -6,7 +6,7 @@ This branch builds on `feature/complete-office-workflows`. Apply V15/V16 through
 
 Set `ACCOUNT_LINK_KEY` to base64 for 32 cryptographically random bytes in server secret storage. Generate a fresh value for each environment; preserve it over restarts. It must never be an `EXPO_PUBLIC_`, `NEXT_PUBLIC_` or `VITE_` variable. The application fails startup for a missing or malformed key. The checked-in CI value is exclusively a disposable integration fixture.
 
-Set `PORTAL_ORIGIN` to the actual customer website HTTPS origin, without a path, query or fragment. Loopback HTTP is allowed for development. The server constructs email links from this configured origin, never a request Host header. Configure Brevo SMTP using SMTP_HOST=smtp-relay.brevo.com, SMTP_PORT=587, the Brevo SMTP login/key and a verified SMTP_FROM sender and `EMAIL_ENABLED=true` for actual delivery. Local QA explicitly keeps email and push disabled.
+Set `PORTAL_ORIGIN` to the actual customer website HTTPS origin, without a path, query or fragment. Loopback HTTP is allowed for development. The server constructs email links from this configured origin, never a request Host header. Configure Resend SMTP using SMTP_HOST=smtp.resend.com, SMTP_PORT=587, SMTP_USERNAME=resend, a Resend API key as SMTP_PASSWORD and a verified SMTP_FROM domain and `EMAIL_ENABLED=true` for actual delivery. Local QA explicitly keeps email and push disabled.
 
 Existing accounts remain unverified; they can sign in, read their owned trips and request verification. Booking creation, contract/plan/amendment acceptance, customer service requests and financial writes require verified email. Notification read state is still available before verification. There is no application-level QA bypass.
 
