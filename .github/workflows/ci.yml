@@ -15,6 +15,8 @@ jobs:
       ALLOW_QA_ACCOUNT_FIXTURES: "1"
       EMAIL_ENABLED: "false"
       DEMO_PAYMENTS_ENABLED: "true"
+      GOOGLE_WEB_CLIENT_ID: ci-google-web-client
+      GOOGLE_JWK_SET_URI: http://127.0.0.1:18999/jwks
     services:
       postgres:
         image: postgres:17-alpine
@@ -72,6 +74,7 @@ jobs:
           python3 tests/booking_flow.py
           python3 tests/offer_flow.py
           python3 tests/account_security_flow.py
+          python3 tests/google_flow.py
           python3 tests/amendment_flow.py
           python3 tests/amendment_revision_flow.py
           python3 tests/travel_documents.py

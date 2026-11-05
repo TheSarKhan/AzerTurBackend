@@ -12,11 +12,17 @@ import org.springframework.web.bind.annotation.*;
 public class CustomerAuthController {
   private final CustomerAuthService auth;
   private final AuthRateLimiter limiter;
+  private final GoogleIdentityVerifier google;
 
-  public CustomerAuthController(CustomerAuthService auth, AuthRateLimiter limiter) {
+  public CustomerAuthController(
+      CustomerAuthService auth, AuthRateLimiter limiter, GoogleIdentityVerifier google) {
     this.auth = auth;
     this.limiter = limiter;
+    this.google = google;
   }
+
+  public record GoogleSignIn(
+      @NotBlank @Size(max = 4096) String credential, @Pattern(regexp = "en|ru|az") String locale) {}
 
   public record Register(
       @NotBlank @Email @Size(max = 254) String email,
@@ -41,6 +47,24 @@ public class CustomerAuthController {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(auth.login(input.email(), input.password(),req.getHeader("User-Agent")));
+  }
+
+  @GetMapping("/google/config")
+  public GoogleIdentityVerifier.Config googleConfig() {
+    return google.config();
+  }
+
+  @PostMapping("/google")
+  public ResponseEntity<?> google(@Valid @RequestBody GoogleSignIn input, HttpServletRequest req) {
+    limiter.checkAddress(req.getRemoteAddr());
+    var identity = google.verify(input.credential());
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            auth.google(
+                identity,
+                input.locale() == null ? "az" : input.locale(),
+                req.getHeader("User-Agent")));
   }
 
   @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "customerSession")
