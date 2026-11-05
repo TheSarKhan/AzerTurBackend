@@ -6,18 +6,9 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class QuoteCalculator {
-  private static final Map<String, List<String>> ROUTES =
-      Map.of(
-          "Baku",
-          List.of("Baku", "Quba", "Gabala"),
-          "Quba",
-          List.of("Quba", "Baku", "Khinalug"),
-          "Khinalug",
-          List.of("Khinalug", "Quba"),
-          "Gabala",
-          List.of("Gabala", "Baku", "Sheki"),
-          "Sheki",
-          List.of("Sheki", "Gabala"));
+  // Any destination may follow any other (the team arranges the transfers), so a route only has to
+  // name known destinations.
+  private static final Set<String> CITIES = Set.of("Baku", "Quba", "Khinalug", "Gabala", "Sheki");
 
   public QuoteResult calculate(QuoteInput q, int tourDays) {
     LocalDate today = LocalDate.now(ZoneId.of("Asia/Baku"));
@@ -27,12 +18,8 @@ public class QuoteCalculator {
     if (q.customDays() != null) {
       if (q.cities() == null || q.cities().size() != days)
         throw new IllegalArgumentException("INVALID_ROUTE");
-      for (int i = 0; i < days; i++) {
-        String city = q.cities().get(i);
-        if (!ROUTES.containsKey(city)
-            || (i > 0 && !ROUTES.get(q.cities().get(i - 1)).contains(city)))
-          throw new IllegalArgumentException("INVALID_ROUTE");
-      }
+      for (String city : q.cities())
+        if (!CITIES.contains(city)) throw new IllegalArgumentException("INVALID_ROUTE");
     }
     double fx =
         switch (q.currency()) {

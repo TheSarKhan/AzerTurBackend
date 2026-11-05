@@ -38,10 +38,26 @@ class QuoteCalculatorTest {
   }
 
   @Test
-  void rejectsDisconnectedRoutes() {
+  void rejectsUnknownDestinationsAndWrongDayCounts() {
     assertThrows(
         IllegalArgumentException.class,
-        () -> new QuoteCalculator().calculate(input("EUR", 2, List.of("Baku", "Khinalug")), 2));
+        () -> new QuoteCalculator().calculate(input("EUR", 2, List.of("Baku", "Atlantis")), 2));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new QuoteCalculator().calculate(input("EUR", 3, List.of("Baku", "Quba")), 2));
+  }
+
+  @Test
+  void acceptsAnyOrderOfKnownDestinations() {
+    for (var route :
+        List.of(
+            List.of("Baku", "Khinalug"),
+            List.of("Sheki", "Quba"),
+            List.of("Khinalug", "Gabala", "Quba"),
+            List.of("Gabala", "Sheki", "Gabala", "Sheki")))
+      assertEquals(
+          route.size(),
+          new QuoteCalculator().calculate(input("EUR", route.size(), route), 2).input().cities().size());
   }
 
   @Test
