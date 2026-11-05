@@ -132,11 +132,11 @@ except Exception:
 helper=r'''
 import json,os,pathlib,signal,sys
 p=json.load(sys.stdin)
-for name,content in p['files'].items():pathlib.Path('/host-nginx/sites-enabled/'+name).write_text(content)
+for name,content in p['files'].items():pathlib.Path('/etc/nginx/sites-enabled/'+name).write_text(content)
 os.kill(int(pathlib.Path('/nginx.pid').read_text()),signal.SIGHUP)
 '''
 def proxy_write(files):
- command=['docker','run','--rm','-i','--pid=host','-v','/etc/nginx:/host-nginx','-v','/run/nginx.pid:/nginx.pid:ro','python:3.12-alpine','python','-c',helper]
+ command=['docker','run','--rm','-i','--pid=host','-v','/etc/nginx:/etc/nginx','-v','/run/nginx.pid:/nginx.pid:ro','python:3.12-alpine','python','-c',helper]
  run(command,input=json.dumps({'files':files}).encode())
 challenge='/var/www/aztrip-acme'
 # Docker creates the root-owned mount directory; certbot and Nginx use the same path.
