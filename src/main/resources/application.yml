@@ -53,6 +53,10 @@ app:
   security:
     account-link-key: ${ACCOUNT_LINK_KEY}
     portal-origin: ${PORTAL_ORIGIN:http://127.0.0.1:4182}
+    google-web-client-id: ${GOOGLE_WEB_CLIENT_ID:}
+    google-ios-client-id: ${GOOGLE_IOS_CLIENT_ID:}
+    google-android-client-id: ${GOOGLE_ANDROID_CLIENT_ID:}
+    google-jwk-set-uri: ${GOOGLE_JWK_SET_URI:https://www.googleapis.com/oauth2/v3/certs}
     operations-user: ${OPERATIONS_USER:operations}
     operations-password: ${OPERATIONS_PASSWORD}
 management:

@@ -49,3 +49,9 @@ See [OPERATOR_OFFERS.md](OPERATOR_OFFERS.md) for the persisted draft/preview/sen
 ## Office workflows update
 
 [OFFICE_WORKFLOWS.md](OFFICE_WORKFLOWS.md) supersedes the earlier planned-only notes about accounts, staged allocations, partner management and notifications. Provider payment settlement remains disabled.
+
+## Google sign-in
+
+`GET /api/v1/auth/google/config` returns the public OAuth client IDs (`enabled:false` and no button while `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID` and `GOOGLE_ANDROID_CLIENT_ID` are all empty). `POST /api/v1/auth/google` takes `{credential, locale?}` where `credential` is a Google ID token. The API verifies its signature against Google's public keys (`GOOGLE_JWK_SET_URI`), the issuer, an audience equal to one of the configured client IDs, expiry and `email_verified`; it never trusts a client-supplied email.
+
+A known Google identity (`customer_identities`) signs in to its account. An unknown identity with an email that matches an existing account is linked to it; otherwise an account is created. Google has verified the address, so the account counts as email-verified. If the matching account was still unverified, its password, sessions and pending email links are revoked first, so someone who pre-registered another person's address cannot keep access. Google-created accounts get a random unusable password and can set one through the normal reset flow. Sign-in attempts are limited per address only.

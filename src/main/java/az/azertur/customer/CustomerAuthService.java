@@ -81,6 +81,80 @@ public class CustomerAuthService {
     return createSession(rows.getFirst().getKey(),userAgent);
   }
 
+  private static final org.springframework.jdbc.core.RowMapper<Customer> CUSTOMER =
+      (r, n) ->
+          new Customer(
+              r.getObject("id", UUID.class),
+              r.getString("email"),
+              r.getString("name"),
+              r.getString("locale"),
+              r.getTimestamp("email_verified_at") != null);
+
+  /**
+   * Signs in with a verified Google identity: a returning identity, an existing account with the
+   * same email (linked) or a new account. Google has verified the address, so it counts as verified.
+   */
+  @Transactional
+  public Session google(GoogleIdentityVerifier.Identity google, String locale, String userAgent) {
+    String email = google.email().toLowerCase(Locale.ROOT);
+    var linked =
+        db.query(
+            "SELECT c.* FROM customer_identities i JOIN customers c ON c.id=i.customer_id WHERE"
+                + " i.provider='GOOGLE' AND i.subject=? FOR UPDATE OF c",
+            CUSTOMER,
+            google.subject());
+    if (!linked.isEmpty()) return createSession(linked.getFirst(), userAgent);
+    var existing = db.query("SELECT * FROM customers WHERE email=? FOR UPDATE", CUSTOMER, email);
+    Customer customer;
+    String action;
+    if (existing.isEmpty()) {
+      UUID id = UUID.randomUUID();
+      db.update(
+          "INSERT INTO customers(id,email,name,password_hash,locale,email_verified_at)"
+              + " VALUES(?,?,?,?,?,now())",
+          id,
+          email,
+          google.name(),
+          encoder.encode(secret()),
+          locale);
+      customer = new Customer(id, email, google.name(), locale, true);
+      action = "GOOGLE_SIGNUP";
+    } else {
+      customer = existing.getFirst();
+      if (!customer.emailVerified()) {
+        // Nobody has proven control of this address yet. Whoever registered it with a password
+        // (possibly not its owner) must not keep access once the real owner signs in with Google.
+        db.update(
+            "UPDATE customers SET password_hash=?, email_verified_at=now() WHERE id=?",
+            encoder.encode(secret()),
+            customer.id());
+        db.update("DELETE FROM customer_sessions WHERE customer_id=?", customer.id());
+        db.update(
+            "UPDATE account_links SET consumed_at=now() WHERE customer_id=? AND consumed_at IS NULL",
+            customer.id());
+        customer = new Customer(customer.id(), email, customer.name(), customer.locale(), true);
+      }
+      action = "GOOGLE_LINKED";
+    }
+    db.update(
+        "INSERT INTO customer_identities(provider,subject,customer_id,email) VALUES('GOOGLE',?,?,?)",
+        google.subject(),
+        customer.id(),
+        email);
+    db.update(
+        "INSERT INTO customer_security_audit(id,customer_id,action) VALUES(?,?,?)",
+        UUID.randomUUID(),
+        customer.id(),
+        action);
+    return createSession(customer, userAgent);
+  }
+
+  private String secret() {
+    byte[] bytes = new byte[32];
+    random.nextBytes(bytes);
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+  }
+
   private Session createSession(Customer customer,String userAgent) {
     byte[] bytes = new byte[32];
     random.nextBytes(bytes);

@@ -28,7 +28,7 @@ public class SecurityConfig {
             a ->
                 a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR)
                     .permitAll()
-                    .requestMatchers("/api/v1/staff/auth/login", "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-email")
+                    .requestMatchers("/api/v1/staff/auth/login", "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-email", "/api/v1/auth/google", "/api/v1/auth/google/config")
                     .permitAll()
                     .requestMatchers(
                         "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/logout-all", "/api/v1/auth/email-verification/**", "/api/v1/auth/sessions/**", "/api/v1/bookings/**")
