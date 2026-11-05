@@ -18,8 +18,5 @@ print('Proxy headers:')
 proxy=run(['cat','/etc/nginx/sites-enabled/aztrip.online.conf'])
 for line in proxy.splitlines():
  if line.strip().startswith(('server_name','listen','ssl_certificate','location','proxy_pass','client_max_body_size','proxy_set_header')): print(line.strip())
-for p in sorted(pathlib.Path('/opt/aztrip/backups').glob('mobile-rollout-*/last-command-error.log'))[-1:]:
- print('Latest infrastructure error:')
- print(p.read_text()[-3000:])
 print('Nginx files:')
 for p in pathlib.Path('/etc/nginx/sites-enabled').glob('*aztrip*'):print(str(p)+' -> '+str(p.resolve()))

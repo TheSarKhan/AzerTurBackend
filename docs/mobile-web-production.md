@@ -18,7 +18,9 @@ Resend sends from no-reply@aztrip.online. `EMAIL_DELIVERY_NOT_BEFORE` is persist
 
 ## Release and recovery
 
-Dispatch the backend Deploy workflow on the reviewed release branch, `target=mobile-web`, `mobile_action=deploy`, and the exact tested 40-character mobile-client SHA. Both Docker images use source SHA tags. The production `compose.override.yml` pins the selected API and mobile images; it must be retained during future deployments. Inspect `/opt/aztrip/mobile-release.json` for the active source commits and backup directory. Do not print the resolved Compose configuration because it contains secrets.
+Dispatch the backend Deploy workflow on the reviewed release branch, `target=mobile-web`, `mobile_action=deploy`, and the exact tested 40-character mobile-client SHA. Both Docker images use source SHA tags. For subsequent static-client updates, dispatch `mobile_action=mobile-only` with the tested mobile SHA; it leaves the API and database running. `mobile_action=finalize` retries only proxy/TLS provisioning.
+
+The production `compose.override.yml` pins the selected API and mobile images; it must be retained during future deployments. Inspect `/opt/aztrip/mobile-release.json` for the active source commits and backup directory. Do not print the resolved Compose configuration because it contains secrets.
 
 A failed API startup restores the previous Compose override and previous image. If a proxy/certificate step fails after the API is healthy, retain the upgraded API, inspect the private error log in that release's backup directory, and retry only the proxy step. Existing website and office virtual hosts are backed up before any edits. PostgreSQL restore is a deliberate recovery action; do not restore an old backup over new customer writes merely to roll back code.
 

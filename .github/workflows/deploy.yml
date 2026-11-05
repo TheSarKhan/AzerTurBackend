@@ -15,7 +15,7 @@ on:
       mobile_action:
         description: Inspect infrastructure or deploy the mobile web client
         type: choice
-        options: [inspect, deploy, finalize]
+        options: [inspect, deploy, finalize, mobile-only]
         default: inspect
       mobile_ref:
         description: Exact tested mobile-client commit
@@ -107,41 +107,55 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 - < deploy/inspect-server.py
       - name: Checkout the pinned customer app
-        if: inputs.mobile_action == 'deploy'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
         uses: actions/checkout@v4
         with:
           repository: TheSarKhan/AzerTurMobileClient
           ref: ${{ inputs.mobile_ref }}
           path: mobile-client
       - uses: docker/setup-buildx-action@v3
-        if: inputs.mobile_action == 'deploy'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
       - name: Build tested production images
-        if: inputs.mobile_action == 'deploy'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
         env:
           MOBILE_SHA: ${{ inputs.mobile_ref }}
+          MOBILE_ACTION: ${{ inputs.mobile_action }}
         run: |
           [[ "$MOBILE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          docker buildx build --platform linux/amd64 --load -t "aztrip-api:$GITHUB_SHA" .
+          if [ "$MOBILE_ACTION" = deploy ]; then
+            docker buildx build --platform linux/amd64 --load -t "aztrip-api:$GITHUB_SHA" .
+          fi
           docker buildx build --platform linux/amd64 --load -t "aztrip-mobile-web:$MOBILE_SHA" mobile-client
       - name: Ship pinned images
-        if: inputs.mobile_action == 'deploy'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
         env:
           MOBILE_SHA: ${{ inputs.mobile_ref }}
+          MOBILE_ACTION: ${{ inputs.mobile_action }}
         run: |
-          docker save "aztrip-api:$GITHUB_SHA" "aztrip-mobile-web:$MOBILE_SHA" | gzip | ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" 'gunzip | docker load'
+          images=("aztrip-mobile-web:$MOBILE_SHA")
+          if [ "$MOBILE_ACTION" = deploy ]; then images+=("aztrip-api:$GITHUB_SHA"); fi
+          docker save "${images[@]}" | gzip | ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" 'gunzip | docker load'
           scp -i ~/.ssh/deploy_key deploy/mobile-rollout.py "$SSH_USER@$SSH_HOST:/opt/aztrip/mobile-rollout.py"
       - name: Back up, validate a database clone, and roll out
         if: inputs.mobile_action == 'deploy'
         env:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           MOBILE_SHA: ${{ inputs.mobile_ref }}
+          MOBILE_ACTION: ${{ inputs.mobile_action }}
         run: |
           python3 - <<'PYTHON' | ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 /opt/aztrip/mobile-rollout.py
           import os,json
           assert os.environ['SMTP_PASSWORD'], 'Missing Resend deployment secret'
           print(json.dumps({'backend_sha':os.environ['GITHUB_SHA'],'mobile_sha':os.environ['MOBILE_SHA'],'smtp_password':os.environ['SMTP_PASSWORD']}))
           PYTHON
+      - name: Replace only the static mobile client
+        if: inputs.mobile_action == 'mobile-only'
+        env:
+          MOBILE_SHA: ${{ inputs.mobile_ref }}
+        run: |
+          scp -i ~/.ssh/deploy_key deploy/mobile-client-update.py "$SSH_USER@$SSH_HOST:/opt/aztrip/mobile-client-update.py"
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 /opt/aztrip/mobile-client-update.py "$MOBILE_SHA"
       - name: Finalize TLS renewal and verify release
-        if: inputs.mobile_action == 'finalize'
+        if: inputs.mobile_action == 'finalize' || inputs.mobile_action == 'mobile-only'
         run: |
           ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 - < deploy/mobile-finalize.py
