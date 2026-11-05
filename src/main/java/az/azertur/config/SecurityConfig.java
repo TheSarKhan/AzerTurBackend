@@ -41,6 +41,7 @@ public class SecurityConfig {
                         "/swagger-ui/**",
                         "/swagger-ui.html")
                     .permitAll()
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/cities", "/api/v1/events", "/api/v1/events/*").permitAll()
                     .requestMatchers("/api/v1/partner-sync/**").permitAll()
                     .requestMatchers("/api/v1/staff/auth/me", "/api/v1/staff/auth/logout").hasRole("OPERATIONS")
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
@@ -48,6 +49,7 @@ public class SecurityConfig {
                     .requestMatchers("/api/v1/operations/partners/*/sync-key").hasRole("ADMIN")
                     .requestMatchers("/api/v1/operations/staff", "/api/v1/operations/office-audit").hasRole("ADMIN")
                     .requestMatchers(org.springframework.http.HttpMethod.POST,"/api/v1/operations/bookings/*/allocation","/api/v1/operations/bookings/*/revised-plan","/api/v1/operations/refunds/*","/api/v1/operations/requests/*/amendment/send").hasRole("FINANCE")
+                    .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/operations/events/*/delete").hasRole("ADMIN")
                     .requestMatchers("/api/v1/operations/**")
                     .hasRole("OPERATIONS")
                     .anyRequest()

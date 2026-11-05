@@ -75,6 +75,7 @@ jobs:
           python3 tests/amendment_flow.py
           python3 tests/amendment_revision_flow.py
           python3 tests/travel_documents.py
+          python3 tests/events_flow.py
       - name: Show API log on failure
         if: failure()
         run: tail -100 api.log || true
