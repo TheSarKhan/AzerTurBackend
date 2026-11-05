@@ -150,7 +150,9 @@ http='''server {
  location / { proxy_pass http://127.0.0.1:8104; proxy_set_header Host $host; }
 }
 '''
-proxy_write({'app.aztrip.online.conf':http})
+existing_app=pathlib.Path('/etc/nginx/sites-enabled/app.aztrip.online.conf')
+if not existing_app.exists() or 'ssl_certificate /etc/letsencrypt/live/app.aztrip.online/' not in existing_app.read_text():
+ proxy_write({'app.aztrip.online.conf':http})
 run(['docker','run','--rm','-v','/etc/letsencrypt:/etc/letsencrypt','-v','/var/lib/letsencrypt:/var/lib/letsencrypt','-v',challenge+':'+challenge,'certbot/certbot','certonly','--webroot','-w',challenge,'--cert-name','app.aztrip.online','-d','app.aztrip.online','--non-interactive','--keep-until-expiring'])
 https='''server {
  listen 443 ssl;
