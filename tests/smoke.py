@@ -17,7 +17,8 @@ assert call('/v3/api-docs')[0]==200
 body=dict(slug='quba-khinalug',date=(datetime.date.today()+datetime.timedelta(days=30)).isoformat(),pax=3,hotel='comfort',guide=True,transfer=False,activity=False,currency='EUR')
 for currency,total in [('EUR',530),('USD',583),('AZN',991)]:
  status,quote=call('/api/v1/quotes',dict(body,currency=currency));assert status==200 and quote['total']==total;assert quote['deposit']+quote['balance']==total
-for patch in [dict(pax=13),dict(date='bad-date'),dict(customDays=2,cities=['Baku','Khinalug'])]:assert call('/api/v1/quotes',dict(body,**patch))[0]==400
+# any known destination may follow any other; unknown ones and a wrong day count are refused
+for patch in [dict(pax=13),dict(date='bad-date'),dict(customDays=2,cities=['Baku','Atlantis']),dict(customDays=2,cities=['Baku'])]:assert call('/api/v1/quotes',dict(body,**patch))[0]==400
 secrets={}
 env=pathlib.Path('.env')
 if env.exists(): secrets=dict(line.split('=',1) for line in env.read_text().splitlines() if '=' in line and not line.startswith('#'))
@@ -29,3 +30,4 @@ if password:
 if os.environ.get('FRONTEND_ORIGIN'):
  status,quote=call('/api/quotes',body,base=os.environ['FRONTEND_ORIGIN']);assert status==200 and quote['total']==530
 print('API smoke checks passed: health, cached catalogue, security, Swagger, currencies, persistence and validation.')
+status,quote=call('/api/v1/quotes',dict(body,customDays=3,cities=['Baku','Khinalug','Sheki']));assert status==200 and quote['total']>0,(status,quote)
