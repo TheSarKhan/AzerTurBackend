@@ -21,7 +21,7 @@ def run(args,input=None,check=True):
 
 def out(args): return run(args).stdout.decode().strip()
 def compose(*args): return ['docker','compose',*args]
-assert not (ROOT/'compose.override.yml').exists() or (ROOT/'mobile-release.json').exists(), 'Review existing compose override before rollout'
+assert not (ROOT/'compose.override.yml').exists() or 'mobile-web' in json.loads((ROOT/'compose.override.yml').read_text()).get('services',{}), 'Review existing compose override before rollout'
 config=json.loads(out(compose('config','--format','json')))
 services=config['services']; pg=services['postgres']['environment']; dbname=pg['POSTGRES_DB']; dbuser=pg['POSTGRES_USER']
 def psql(query,database=dbname):
@@ -35,7 +35,7 @@ def dump(path):
 def wait(url):
  for _ in range(60):
   try:
-   with urllib.request.urlopen(url,timeout=4) as r:
+   with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'}),timeout=4) as r:
     if r.status==200: return
   except (OSError,urllib.error.URLError): pass
   time.sleep(3)
@@ -129,15 +129,16 @@ except Exception:
 # Configure only the requested virtual host and the upload limit on the existing API.
 # The deployment user already controls Docker; the helper mounts only proxy config
 # and nginx's pid file, with no host shell, privileged mode, or credential export.
-helper=r'''
-import json,os,pathlib,signal,sys
+writer=r'''
+import json,pathlib,sys
 p=json.load(sys.stdin)
 for name,content in p['files'].items():pathlib.Path('/etc/nginx/sites-enabled/'+name).write_text(content)
-os.kill(int(pathlib.Path('/nginx.pid').read_text()),signal.SIGHUP)
 '''
 def proxy_write(files):
- command=['docker','run','--rm','-i','--pid=host','-v','/etc/nginx:/etc/nginx','-v','/run/nginx.pid:/nginx.pid:ro','python:3.12-alpine','python','-c',helper]
- run(command,input=json.dumps({'files':files}).encode())
+ run(['docker','run','--rm','-i','--cap-drop=ALL','-v','/etc/nginx:/etc/nginx','python:3.12-alpine','python','-c',writer],input=json.dumps({'files':files}).encode())
+ run(['docker','run','--rm','-v','/etc/nginx/sites-enabled/app.aztrip.online.conf:/etc/nginx/conf.d/default.conf:ro','-v','/etc/letsencrypt:/etc/letsencrypt:ro',WEB,'nginx','-t'])
+ # A one-shot signal helper needs KILL only; no writable host files or secrets.
+ run(['docker','run','--rm','--pid=host','--security-opt','apparmor=unconfined','--cap-drop=ALL','--cap-add=KILL','-v','/run/nginx.pid:/nginx.pid:ro','python:3.12-alpine','python','-c','import pathlib,os,signal;os.kill(int(pathlib.Path("/nginx.pid").read_text()),signal.SIGHUP)'])
 challenge='/var/www/aztrip-acme'
 # Docker creates the root-owned mount directory; certbot and Nginx use the same path.
 run(['docker','run','--rm','-v',challenge+':'+challenge,'python:3.12-alpine','python','-c','import pathlib;pathlib.Path("'+challenge+'/.well-known/acme-challenge").mkdir(parents=True,exist_ok=True)'])
