@@ -11,9 +11,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 public class CustomerTokenFilter extends OncePerRequestFilter {
   private final CustomerAuthService auth;
+  private final az.azertur.staff.StaffAuthService staff;
 
-  public CustomerTokenFilter(CustomerAuthService auth) {
+  public CustomerTokenFilter(CustomerAuthService auth, az.azertur.staff.StaffAuthService staff) {
     this.auth = auth;
+    this.staff = staff;
   }
 
   @Override
@@ -24,6 +26,19 @@ public class CustomerTokenFilter extends OncePerRequestFilter {
     if (header != null && header.startsWith("Bearer ")) {
       var customer = auth.authenticate(header.substring(7));
       if (customer.isEmpty()) {
+        var member = staff.authenticate(header.substring(7));
+        if (member.isPresent()) {
+          var principal = member.get();
+          var roles = principal.role().equals("ADMIN")
+              ? List.of("ROLE_OPERATIONS", "ROLE_ADMIN", "ROLE_FINANCE")
+              : List.of("ROLE_OPERATIONS");
+          var context = SecurityContextHolder.createEmptyContext();
+          context.setAuthentication(new UsernamePasswordAuthenticationToken(principal, null,
+              roles.stream().map(SimpleGrantedAuthority::new).toList()));
+          SecurityContextHolder.setContext(context);
+          chain.doFilter(req, res);
+          return;
+        }
         res.setStatus(401);
         res.setContentType("application/json");
         res.getWriter().write("{\"error\":\"UNAUTHENTICATED\"}");

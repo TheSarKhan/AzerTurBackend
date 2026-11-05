@@ -15,20 +15,20 @@ import org.springframework.web.cors.*;
 @Configuration
 public class SecurityConfig {
   @Bean
-  SecurityFilterChain security(HttpSecurity http, az.azertur.customer.CustomerAuthService auth)
+  SecurityFilterChain security(HttpSecurity http, az.azertur.customer.CustomerAuthService auth, az.azertur.staff.StaffAuthService staff)
       throws Exception {
     return http.cors(c -> {})
         .csrf(c -> c.disable())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .addFilterBefore(
-            new az.azertur.customer.CustomerTokenFilter(auth),
+            new az.azertur.customer.CustomerTokenFilter(auth, staff),
             org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
                 .class)
         .authorizeHttpRequests(
             a ->
                 a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR)
                     .permitAll()
-                    .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-email")
+                    .requestMatchers("/api/v1/staff/auth/login", "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-email")
                     .permitAll()
                     .requestMatchers(
                         "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/logout-all", "/api/v1/auth/email-verification/**", "/api/v1/auth/sessions/**", "/api/v1/bookings/**")
@@ -42,6 +42,8 @@ public class SecurityConfig {
                         "/swagger-ui.html")
                     .permitAll()
                     .requestMatchers("/api/v1/partner-sync/**").permitAll()
+                    .requestMatchers("/api/v1/staff/auth/me", "/api/v1/staff/auth/logout").hasRole("OPERATIONS")
+                    .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .requestMatchers("/api/v1/operations/staff/directory").hasRole("OPERATIONS")
                     .requestMatchers("/api/v1/operations/partners/*/sync-key").hasRole("ADMIN")
                     .requestMatchers("/api/v1/operations/staff", "/api/v1/operations/office-audit").hasRole("ADMIN")

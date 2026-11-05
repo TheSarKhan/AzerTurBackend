@@ -93,21 +93,8 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - uses: actions/checkout@v4
       - name: Inspect Aztrip service topology without printing secrets
         if: inputs.mobile_action == 'inspect'
         run: |
-          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 - <<'REMOTE'
-          import subprocess,json,pathlib,shutil
-          result=subprocess.run(['docker','compose','config','--format','json'],cwd='/opt/aztrip',capture_output=True,text=True,check=True)
-          config=json.loads(result.stdout)
-          for name,service in config['services'].items():
-              print(json.dumps({'service':name,'image':service.get('image'),'ports':service.get('ports'),'cors':service.get('environment',{}).get('CORS_ORIGINS'),'environmentKeys':sorted(service.get('environment',{}))}))
-          print('Proxy binaries: '+', '.join(n for n in ['nginx','caddy','certbot'] if shutil.which(n)))
-          paths=list(pathlib.Path('/etc/nginx/sites-enabled').glob('*aztrip*'))+list(pathlib.Path('/etc/nginx/conf.d').glob('*aztrip*'))
-          for path in paths:
-              print('Proxy file: '+str(path))
-              for line in path.read_text().splitlines():
-                  if line.strip().startswith(('server_name','listen','ssl_certificate','location','proxy_pass')):
-                      print(line.strip())
-          print('TLS directories: '+', '.join(str(p) for p in pathlib.Path('/etc/letsencrypt/live').glob('*aztrip*')))
-          REMOTE
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 - < deploy/inspect-server.py
