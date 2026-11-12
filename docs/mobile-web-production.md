@@ -24,4 +24,4 @@ The production `compose.override.yml` pins the selected API and mobile images; i
 
 A failed API startup restores the previous Compose override and previous image. If a proxy/certificate step fails after the API is healthy, retain the upgraded API, inspect the private error log in that release's backup directory, and retry only the proxy step. Existing website and office virtual hosts are backed up before any edits. PostgreSQL restore is a deliberate recovery action; do not restore an old backup over new customer writes merely to roll back code.
 
-Live payment checkout still requires the Epoint merchant configuration. Demo payment mutations are disabled on the public production API. Encrypted offline documents and device push belong to native builds; web customers can explicitly download or share original operator-issued documents.
+Live payment checkout still requires the Epoint merchant configuration. The demo payment endpoint no longer exists; finance staff record received payments in the dashboard. Encrypted offline documents and device push belong to native builds; web customers can explicitly download or share original operator-issued documents.

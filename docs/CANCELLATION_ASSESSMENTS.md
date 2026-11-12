@@ -13,7 +13,7 @@ The cancellation request creation time selects the latest applicable fromInclusi
 
 Allocations must cover all contracted services, equal received funds and stay within each service price. Open unpaid requests are not received funds. Save and approval are guarded by booking locks, accepted-contract/source checks and version/paid-amount checks. Approval cancels open payment requests. Original allocation, policy, applied rule, assessment actor and approval time are retained. Repeated approval is idempotent.
 
-The old resolve endpoint cannot bypass assessment for paid or contracted bookings. Paid legacy demo bookings without a verifiable accepted contract require a migration/manual review path; no unverifiable automatic refund is allowed.
+The old resolve endpoint cannot bypass assessment for paid or contracted bookings. Paid legacy bookings without a verifiable accepted contract require a migration/manual review path; no unverifiable automatic refund is allowed.
 
 The approved UI now supplies operator review and customer breakdowns. Outstanding: external supplier confirmation integrations and Epoint refund execution/reconciliation. Current states describe a reviewed/approved plan only.
 

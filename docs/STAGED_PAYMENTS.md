@@ -11,7 +11,7 @@ Implemented foundation:
 - Deposit requests are unique per booking; request keys support exact retries and reject altered payloads.
 - Service requests require a paid deposit and a service included in the offer.
 - Customer reads are ownership-scoped. Pending change/cancellation requests block issuance.
-- Legacy demo payment cannot pay a booking with staged payment requests.
+- The legacy demo payment endpoint and flag were removed; there is no stand-alone payment path.
 - Epoint signature generation and verification follow the documented raw SHA-1 construction.
 
 Not implemented or enabled yet:
