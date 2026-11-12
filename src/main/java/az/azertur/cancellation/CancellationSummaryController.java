@@ -23,7 +23,7 @@ public class CancellationSummaryController {
   for(var u:updates)if(u.path("id").asText().equals(request.toString())&&u.has("lines"))selected=u;
   if(selected==null)throw DomainException.missing();
   var lines=new ArrayList<String>();
-  lines.add("AZERTUR — CANCELLATION SUMMARY");lines.add("Booking: "+id);lines.add("Request: "+request);
+  lines.add("AZTRIP — CANCELLATION SUMMARY");lines.add("Booking: "+id);lines.add("Request: "+request);
   lines.add("Approved: "+selected.path("approved_at").asText());
   lines.add("This summary records the cancellation decision. It is not proof of a refund transfer.");
   String currency=selected.path("currency").asText();

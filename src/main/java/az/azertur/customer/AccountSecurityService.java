@@ -192,7 +192,7 @@ public class AccountSecurityService {
       String title=purpose.equals("VERIFY")?(l.equals("az")?"Email ünvanınızı təsdiqləyin":l.equals("ru")?"Подтвердите email":"Verify your email")
           :purpose.equals("RESET")?(l.equals("az")?"Şifrənizi yeniləyin":l.equals("ru")?"Сброс пароля":"Reset your password")
           :(l.equals("az")?"Şifrəniz dəyişdirildi":l.equals("ru")?"Пароль изменён":"Your password was changed");
-      var message=new SimpleMailMessage();message.setFrom(sender);message.setTo((String)job.get("email"));message.setSubject("Azertur — "+title);
+      var message=new SimpleMailMessage();message.setFrom(sender);message.setTo((String)job.get("email"));message.setSubject("AzTrip — "+title);
       message.setText(title+"\n\n"+(purpose.equals("PASSWORD_CHANGED")?(l.equals("az")?"Bu dəyişikliyi siz etməmisinizsə komandamızla əlaqə saxlayın.":l.equals("ru")?"Если это были не вы, свяжитесь с нашей командой.":"If this was not you, contact our team."):p.path("url").asText()+"\n\n"+(l.equals("az")?"Bu linki siz istəməmisinizsə, məktubu nəzərə almayın.":l.equals("ru")?"Если вы не запрашивали ссылку, проигнорируйте письмо.":"If you did not request this link, ignore this message.")));
       mail.send(message);
       db.update("UPDATE account_mail_jobs SET state='SENT',cipher=null,nonce=null WHERE id=? AND state='SENDING'",id);
