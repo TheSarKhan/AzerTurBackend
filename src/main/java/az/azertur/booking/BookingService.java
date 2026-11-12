@@ -37,7 +37,6 @@ public class BookingService {
       Instant createdAt) {}
 
   private final JdbcTemplate db;
-  private final boolean demoPayments;
   private final boolean emailEnabled;
   private final RowMapper<Booking> mapper =
       (r, n) ->
@@ -59,10 +58,8 @@ public class BookingService {
 
   public BookingService(
       JdbcTemplate db,
-      @Value("${app.demo-payments:true}") boolean demoPayments,
       @Value("${app.notifications.email-enabled:false}") boolean emailEnabled) {
     this.db = db;
-    this.demoPayments = demoPayments;
     this.emailEnabled = emailEnabled;
   }
 
@@ -158,60 +155,7 @@ public class BookingService {
         b.customerId(),
         id,
         next,
-        approve
-            ? "Your request was approved. Demo payment is now available."
-            : "The operator could not approve your request. See the response in your trips.");
-    return get(id);
-  }
-
-  @Transactional
-  public Booking pay(UUID id, UUID customer, String key, String kind, boolean success) {
-    Booking b = lock(id);
-    own(b, customer);
-    if (!demoPayments) throw DomainException.conflict("DEMO_PAYMENTS_DISABLED");
-    if(db.queryForObject("SELECT count(*) FROM contract_documents WHERE booking_id=? AND accepted_at IS NOT NULL",Integer.class,id)>0)throw DomainException.conflict("STAGED_PAYMENT_WORKFLOW_REQUIRED");
-    var previous =
-        db.queryForList(
-            "SELECT * FROM booking_payments WHERE customer_id=? AND idempotency_key=?",
-            customer,
-            key);
-    if (!previous.isEmpty()) {
-      var payment = previous.getFirst();
-      if (!id.equals(payment.get("booking_id")) || !kind.equals(payment.get("kind")))
-        throw DomainException.conflict("IDEMPOTENCY_KEY_REUSED");
-      return get(id);
-    }
-    if (db.queryForObject(
-            "SELECT count(*) FROM booking_requests WHERE booking_id=? AND status='PENDING'",
-            Long.class,
-            id)
-        > 0) throw DomainException.conflict("REQUEST_PENDING");
-    if (db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND status<>'CANCELLED'", Integer.class, id)>0)
-      throw DomainException.conflict("STAGED_PAYMENT_REQUIRED");
-    if(db.queryForObject("SELECT count(*) FROM cancelled_services WHERE booking_id=?",Integer.class,id)>0) throw DomainException.conflict("PAYMENT_PLAN_REVIEW_REQUIRED");
-    int amount = BookingWorkflow.payable(b.status(), b.total(), b.deposit(), b.paid(), kind);
-    if (!success) throw DomainException.conflict("DEMO_PAYMENT_FAILED");
-    db.update(
-        "INSERT INTO"
-            + " booking_payments(id,booking_id,customer_id,idempotency_key,kind,amount,currency)"
-            + " VALUES(?,?,?,?,?,?,?)",
-        UUID.randomUUID(),
-        id,
-        customer,
-        key,
-        kind,
-        amount,
-        b.currency());
-    db.update(
-        "UPDATE bookings SET paid=paid+?,status='CONFIRMED',updated_at=now() WHERE id=?",
-        amount,
-        id);
-    audit(id, customer.toString(), "DEMO_" + kind, "Demo payment only");
-    notify(
-        customer,
-        id,
-        "PAYMENT_RECORDED",
-        "Your demo payment was recorded. No real money was charged.");
+        "The operator could not approve your request. See the response in your trips.");
     return get(id);
   }
 

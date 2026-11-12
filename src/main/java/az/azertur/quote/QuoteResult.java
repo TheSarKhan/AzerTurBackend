@@ -14,7 +14,6 @@ public record QuoteResult(
     LocalDate due,
     Instant expires,
     List<Line> lines,
-    QuoteInput input,
-    boolean demo) {
+    QuoteInput input) {
   public record Line(String label, int amount) {}
 }

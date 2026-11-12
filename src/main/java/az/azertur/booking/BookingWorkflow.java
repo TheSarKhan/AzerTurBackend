@@ -7,13 +7,9 @@ public final class BookingWorkflow {
 
   public static String review(String status, boolean approve) {
     if (!status.equals("PENDING_REVIEW")) throw DomainException.conflict("ALREADY_REVIEWED");
-    return approve ? "AWAITING_PAYMENT" : "REJECTED";
+    // A request is accepted by sending an offer and a contract, never by a bare approval.
+    if (approve) throw DomainException.conflict("OFFER_WORKFLOW_REQUIRED");
+    return "REJECTED";
   }
 
-  public static int payable(String status, int total, int deposit, int paid, String kind) {
-    if (kind.equals("DEPOSIT") && status.equals("AWAITING_PAYMENT") && paid == 0) return deposit;
-    if (kind.equals("BALANCE") && status.equals("CONFIRMED") && paid > 0 && paid < total)
-      return total - paid;
-    throw DomainException.conflict("PAYMENT_NOT_ALLOWED");
-  }
 }

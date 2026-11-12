@@ -28,7 +28,6 @@ services:
       DATABASE_URL: jdbc:postgresql://postgres:5432/azertur
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
       REDIS_HOST: redis
-      DEMO_PAYMENTS_ENABLED: ${DEMO_PAYMENTS_ENABLED:-true}
       PUSH_ENABLED: ${PUSH_ENABLED:-false}
       EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
       EMAIL_ENABLED: ${EMAIL_ENABLED:-false}

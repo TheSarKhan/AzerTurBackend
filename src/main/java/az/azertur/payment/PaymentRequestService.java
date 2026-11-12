@@ -14,6 +14,9 @@ public class PaymentRequestService {
   public record Issue(@NotNull UUID contractId,@NotNull UUID requestKey,
       @NotNull @Pattern(regexp="DEPOSIT|SERVICE") String kind,
       @Size(max=30) String serviceKey,@NotNull BigDecimal amount) {}
+  public record MarkPaid(@NotNull BigDecimal amount,
+      @NotNull @Pattern(regexp="BANK_TRANSFER|CASH|CARD_TERMINAL|OTHER") String method,
+      @Size(max=120) String reference,java.time.Instant receivedAt) {}
   private final JdbcTemplate db;
   private final ObjectMapper json;
   private final OfficeFinance finance;
@@ -26,7 +29,7 @@ public class PaymentRequestService {
     return list(booking);
   }
   public Object list(UUID booking) {
-    return db.queryForList("SELECT id,contract_id,kind,service_key,amount_minor,currency,status,created_at,customer_message FROM staged_payment_requests WHERE booking_id=? ORDER BY created_at",booking);
+    return db.queryForList("SELECT id,contract_id,kind,service_key,amount_minor,currency,status,created_at,customer_message,paid_at,payment_method,payment_reference FROM staged_payment_requests WHERE booking_id=? ORDER BY created_at",booking);
   }
   @Transactional
   public Object issue(UUID booking,Issue input,String actor) {
@@ -75,6 +78,29 @@ public class PaymentRequestService {
     db.update("INSERT INTO staged_payment_requests(id,booking_id,contract_id,kind,service_key,amount_minor,currency,request_key,created_by) VALUES(?,?,?,?,?,?,?,?,?)",id,booking,input.contractId(),input.kind(),input.serviceKey(),amount,offer.path("currency").asText(),input.requestKey(),actor);
     db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,'PAYMENT_REQUEST_ISSUED',?)",UUID.randomUUID(),booking,actor,id.toString());
     for(String channel:List.of("EMAIL","PUSH"))db.update("INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,?,'PAYMENT_REQUESTED','Review the payment request in your account.',?)",UUID.randomUUID(),b.get("customer_id"),booking,channel,channel.equals("EMAIL")&&email?"QUEUED":"WAITING_CONFIGURATION");
+    return list(booking);
+  }
+  /** Finance staff record that the money for an open payment request has been received. */
+  @Transactional
+  public Object markPaid(UUID booking,UUID requestId,MarkPaid input,String actor) {
+    var b=db.queryForList("SELECT * FROM bookings WHERE id=? FOR UPDATE",booking).stream().findFirst().orElseThrow(DomainException::missing);
+    var rows=db.queryForList("SELECT * FROM staged_payment_requests WHERE id=? AND booking_id=? FOR UPDATE",requestId,booking);
+    if (rows.isEmpty()) throw DomainException.missing();
+    var request=rows.getFirst();
+    if (List.of("CANCELLED","REJECTED").contains(b.get("status"))) throw DomainException.conflict("PAYMENT_WORKFLOW_CONFLICT");
+    var state=(String)request.get("status");
+    if (state.equals("PAID")) throw DomainException.conflict("PAYMENT_ALREADY_RECORDED");
+    if (!state.equals("OPEN")) throw DomainException.conflict("PAYMENT_REQUEST_NOT_OPEN");
+    // The amount is typed again by the employee so a wrong row cannot be marked paid by mistake.
+    if (PaymentAmounts.minor(input.amount())!=((Number)request.get("amount_minor")).longValue()) throw DomainException.conflict("AMOUNT_MISMATCH");
+    java.time.Instant at=input.receivedAt()==null?java.time.Instant.now():input.receivedAt();
+    if (at.isAfter(java.time.Instant.now().plusSeconds(300))) throw DomainException.bad("INVALID_RECEIVED_AT");
+    String reference=input.reference()==null||input.reference().isBlank()?null:input.reference().strip();
+    db.update("UPDATE staged_payment_requests SET status='PAID',paid_at=?,payment_method=?,payment_reference=?,recorded_by=? WHERE id=?",java.sql.Timestamp.from(at),input.method(),reference,actor,requestId);
+    if ("DEPOSIT".equals(request.get("kind")) && "PENDING_REVIEW".equals(b.get("status")))
+      db.update("UPDATE bookings SET status='CONFIRMED',updated_at=now() WHERE id=?",booking);
+    db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,'PAYMENT_RECEIVED',?)",UUID.randomUUID(),booking,actor,requestId+" "+input.method()+(reference==null?"":" "+reference));
+    for(String channel:List.of("EMAIL","PUSH"))db.update("INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,?,'PAYMENT_RECEIVED','Your payment was received.',?)",UUID.randomUUID(),b.get("customer_id"),booking,channel,channel.equals("EMAIL")&&email?"QUEUED":"WAITING_CONFIGURATION");
     return list(booking);
   }
 }

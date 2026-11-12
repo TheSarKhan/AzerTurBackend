@@ -100,7 +100,7 @@ finally:
  envfile.unlink(missing_ok=True)
 # New-key initialization only for this previously old installation. Preserve it forever.
 api_env.update({'CORS_ORIGINS':','.join(dict.fromkeys((services['api'].get('environment',{}).get('CORS_ORIGINS','')+',https://app.aztrip.online').split(','))),
- 'SMTP_HOST':'smtp.resend.com','SMTP_PORT':'587','SMTP_USERNAME':'resend','SMTP_PASSWORD':payload['smtp_password'],'SMTP_FROM':'no-reply@aztrip.online','EMAIL_ENABLED':'true','PUSH_ENABLED':'false','DEMO_PAYMENTS_ENABLED':'false'})
+ 'SMTP_HOST':'smtp.resend.com','SMTP_PORT':'587','SMTP_USERNAME':'resend','SMTP_PASSWORD':payload['smtp_password'],'SMTP_FROM':'no-reply@aztrip.online','EMAIL_ENABLED':'true','PUSH_ENABLED':'false',})
 assert api_env['SMTP_PASSWORD'].startswith('re_')
 api_env.setdefault('EMAIL_DELIVERY_NOT_BEFORE',datetime.datetime.now(datetime.timezone.utc).isoformat())
 new_env=''.join(k+'='+v+'\n' for k,v in api_env.items())

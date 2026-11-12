@@ -104,4 +104,20 @@ assert call(pp,payload|{'requestKey':str(uuid.uuid4()),'kind':'SERVICE','service
 assert call('bookings/'+bid+'/payment-requests',auth=otherauth)[0]==404
 assert call(pp,payload,auth)[0]==403
 assert call('bookings/'+bid+'/payment-requests',auth=auth)[1][0]['amount_minor']==10025
-print('Payment request checks passed: cents, contract gate, deposit uniqueness, duplicate requests, total cap, unpaid-deposit gate and ownership.')
+# Finance records that the money arrived (bank transfer / cash); there is no online payment yet.
+mp=pp+'/'+payments[0]['id']+'/mark-paid'
+rec={'amount':100.25,'method':'BANK_TRANSFER','reference':'QA-REF-1'}
+assert call(mp,rec,auth)[0]==403 and call(mp,rec)[0]==401
+assert call(mp,rec|{'amount':100.26},ops)[1]['error']=='AMOUNT_MISMATCH'
+assert call(mp,rec|{'method':'BITCOIN'},ops)[0]==400
+assert call(mp,rec|{'receivedAt':'2999-01-01T00:00:00Z'},ops)[1]['error']=='INVALID_RECEIVED_AT'
+assert call(pp+'/'+str(uuid.uuid4())+'/mark-paid',rec,ops)[0]==404
+status,paid=call(mp,rec,ops);assert status==200,(status,paid)
+row=paid[0];assert row['status']=='PAID' and row['payment_method']=='BANK_TRANSFER' and row['payment_reference']=='QA-REF-1' and row['paid_at'],row
+assert call(mp,rec,ops)[1]['error']=='PAYMENT_ALREADY_RECORDED'
+assert next(x for x in call('bookings',auth=auth)[1] if x['id']==bid)['status']=='CONFIRMED'
+assert call('bookings/'+bid+'/payment-requests',auth=auth)[1][0]['status']=='PAID'
+assert call('bookings/'+bid+'/payment-requests',auth=otherauth)[0]==404
+assert call(pp,payload|{'requestKey':str(uuid.uuid4())},ops)[1]['error']=='DEPOSIT_ALREADY_RECEIVED'
+assert [n for n in call('operations/notifications',auth=ops)[1]['items'] if n['event']=='PAYMENT_RECEIVED' and n['booking_id']==bid]
+print('Payment request checks passed: cents, contract gate, deposit uniqueness, duplicate requests, total cap, unpaid-deposit gate, ownership, recorded receipts and the finance-only mark-paid endpoint.')

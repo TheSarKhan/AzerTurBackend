@@ -19,9 +19,6 @@ public class BookingController {
 
   public record Create(@NotNull UUID quoteId, @NotNull @Size(max = 2000) String note) {}
 
-  public record Payment(
-      @NotNull @Pattern(regexp = "DEPOSIT|BALANCE") String kind, boolean success) {}
-
   public record Request(
       @NotNull @Pattern(regexp = "CHANGE|CANCEL") String kind,
       @NotBlank @Size(min = 5, max = 2000) String message) {}
@@ -40,17 +37,6 @@ public class BookingController {
   public Object create(
       @AuthenticationPrincipal Customer customer, @Valid @RequestBody Create body) {
     return bookings.create(customer, body.quoteId(), body.note());
-  }
-
-  @PostMapping("/{id}/demo-payment")
-  public Object pay(
-      @PathVariable UUID id,
-      @AuthenticationPrincipal Customer customer,
-      @RequestHeader("Idempotency-Key") @Size(min = 16, max = 80) String key,
-      @Valid @RequestBody Payment body) {
-    if (key.length() < 16 || key.length() > 80)
-      throw az.azertur.shared.DomainException.bad("INVALID_IDEMPOTENCY_KEY");
-    return bookings.pay(id, customer.id(), key, body.kind(), body.success());
   }
 
   @PostMapping("/{id}/requests")

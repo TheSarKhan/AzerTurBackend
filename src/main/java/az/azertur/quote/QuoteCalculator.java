@@ -55,8 +55,7 @@ public class QuoteCalculator {
         q.date().minusDays(7),
         Instant.now().plus(Duration.ofHours(72)),
         List.copyOf(lines),
-        q,
-        true);
+        q);
   }
 
   private void add(List<QuoteResult.Line> lines, String key, int euros, double fx) {

@@ -6,30 +6,21 @@ import org.junit.jupiter.api.Test;
 
 class BookingWorkflowTest {
   @Test
-  void operatorMustReviewBeforePayment() {
-    assertThrows(
-        RuntimeException.class,
-        () -> BookingWorkflow.payable("PENDING_REVIEW", 530, 159, 0, "DEPOSIT"));
-    assertEquals("AWAITING_PAYMENT", BookingWorkflow.review("PENDING_REVIEW", true));
-    assertEquals(159, BookingWorkflow.payable("AWAITING_PAYMENT", 530, 159, 0, "DEPOSIT"));
+  void aRequestCanOnlyBeRejectedHere() {
+    assertEquals("REJECTED", BookingWorkflow.review("PENDING_REVIEW", false));
   }
 
   @Test
-  void refusesRepeatedDeposits() {
-    assertThrows(
-        RuntimeException.class,
-        () -> BookingWorkflow.payable("CONFIRMED", 530, 159, 159, "DEPOSIT"));
-    assertEquals(371, BookingWorkflow.payable("CONFIRMED", 530, 159, 159, "BALANCE"));
-    assertThrows(
-        RuntimeException.class,
-        () -> BookingWorkflow.payable("CONFIRMED", 530, 159, 530, "BALANCE"));
+  void approvalGoesThroughTheOfferWorkflow() {
+    var error =
+        assertThrows(RuntimeException.class, () -> BookingWorkflow.review("PENDING_REVIEW", true));
+    assertTrue(error.getMessage().contains("OFFER_WORKFLOW_REQUIRED"));
   }
 
   @Test
-  void cannotReviewOrPayCancelledBookings() {
+  void cannotReviewTwiceOrCancelledBookings() {
+    assertThrows(RuntimeException.class, () -> BookingWorkflow.review("REJECTED", false));
     assertThrows(RuntimeException.class, () -> BookingWorkflow.review("CANCELLED", true));
-    assertThrows(
-        RuntimeException.class,
-        () -> BookingWorkflow.payable("CANCELLED", 530, 159, 159, "BALANCE"));
+    assertThrows(RuntimeException.class, () -> BookingWorkflow.review("CONFIRMED", false));
   }
 }

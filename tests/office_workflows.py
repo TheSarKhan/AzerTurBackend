@@ -68,13 +68,8 @@ assert call('bookings/notifications/push-token',push|{'enabled':False},auth)[0]=
 payment='operations/bookings/'+bid+'/payment-requests'
 deposit={'contractId':contract['id'],'requestKey':str(uuid.uuid4()),'kind':'DEPOSIT','serviceKey':None,'amount':200}
 assert call(payment,deposit,ops)[0]==200
-# LOCAL QA ONLY: emulate a provider-confirmed receipt in the isolated loopback development database.
-if os.environ.get('CI')=='true':
- containers=subprocess.check_output(['docker','ps','--filter','ancestor=postgres:17-alpine','--format','{{.ID}}']).decode().splitlines()
- assert len(containers)==1, 'Expected exactly one CI PostgreSQL service'
- fixture_command=['docker','exec','-i',containers[0],'psql','-U','azertur','-d','azertur','-v','ON_ERROR_STOP=1']
-else:fixture_command=['docker','compose','exec','-T','postgres','psql','-U','azertur','-d','azertur','-v','ON_ERROR_STOP=1']
-subprocess.run(fixture_command,input=f"UPDATE staged_payment_requests SET status='PAID' WHERE booking_id='{uuid.UUID(bid)}' AND request_key='{uuid.UUID(deposit['requestKey'])}';".encode(),check=True,capture_output=True)
+deposit_row=next(r for r in call(payment,auth=ops)[1] if r['kind']=='DEPOSIT')
+assert call(payment+'/'+deposit_row['id']+'/mark-paid',{'amount':200,'method':'BANK_TRANSFER','reference':'QA-RECEIPT'},ops)[0]==200
 assert call(path,d,ops)[0]==409
 allocpath='operations/bookings/'+bid+'/allocation'
 shares={'transport':8000,'hotel':6000,'guide':4000,'transfer':1000,'activity':1000}

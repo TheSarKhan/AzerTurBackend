@@ -14,7 +14,6 @@ jobs:
       PORTAL_ORIGIN: "http://127.0.0.1:4182"
       ALLOW_QA_ACCOUNT_FIXTURES: "1"
       EMAIL_ENABLED: "false"
-      DEMO_PAYMENTS_ENABLED: "true"
     services:
       postgres:
         image: postgres:17-alpine
@@ -71,6 +70,7 @@ jobs:
           python3 tests/smoke.py
           python3 tests/booking_flow.py
           python3 tests/offer_flow.py
+          python3 tests/payment_requests.py
           python3 tests/account_security_flow.py
           python3 tests/amendment_flow.py
           python3 tests/amendment_revision_flow.py

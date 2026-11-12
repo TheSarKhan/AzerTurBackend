@@ -25,8 +25,6 @@ public class OperationsController {
         "quoteCount",
         quotes.count(),
         "recentQuotes",
-        quotes.findTop20ByOrderByCreatedAtDesc(),
-        "mode",
-        "DEMO_PRICING");
+        quotes.findTop20ByOrderByCreatedAtDesc());
   }
 }

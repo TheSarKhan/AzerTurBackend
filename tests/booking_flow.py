@@ -34,18 +34,17 @@ def make_quote(**patch):
 qid=make_quote();status,booking=call('bookings',{'quoteId':qid,'note':'Integration test request'},auth);assert status==200,(status,booking)
 bid=booking['id'];assert booking['status']=='PENDING_REVIEW'
 assert call('bookings',{'quoteId':qid,'note':'duplicate'},auth)[1]['id']==bid
-assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},auth,str(uuid.uuid4()))[0]==409
+assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},auth,str(uuid.uuid4()))[0] in (403,404,405)  # the demo payment endpoint no longer exists
 assert call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Other customer test'},otherauth)[0]==404
-assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},otherauth,str(uuid.uuid4()))[0]==404
 assert call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Availability checked'},auth)[0]==403
 assert call('operations/bookings/'+bid+'/review',{'note':'Decision must be explicit'},ops)[0]==400
-status,booking=call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Availability checked'},ops);assert status==200 and booking['status']=='AWAITING_PAYMENT',(status,booking)
-assert call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Duplicate review'},ops)[0]==409
-assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':False},auth,str(uuid.uuid4()))[0]==409
-key=str(uuid.uuid4());status,booking=call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},auth,key);assert status==200 and booking['paid']==159 and booking['status']=='CONFIRMED',(status,booking)
-assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},auth,key)[1]['paid']==159
-assert call('bookings/'+bid+'/demo-payment',{'kind':'DEPOSIT','success':True},auth,str(uuid.uuid4()))[0]==409
-status,booking=call('bookings/'+bid+'/demo-payment',{'kind':'BALANCE','success':True},auth,str(uuid.uuid4()));assert status==200 and booking['paid']==530
+assert call('operations/bookings/'+bid+'/review',{'approve':True,'note':'Availability checked'},ops)[1]['error']=='OFFER_WORKFLOW_REQUIRED'
+rejected=make_quote(pax=2);status,rb=call('bookings',{'quoteId':rejected,'note':'Will be rejected'},auth);assert status==200,(status,rb)
+status,rb=call('operations/bookings/'+rb['id']+'/review',{'approve':False,'note':'Not available on these dates'},ops);assert status==200 and rb['status']=='REJECTED',(status,rb)
+assert call('operations/bookings/'+rb['id']+'/review',{'approve':False,'note':'Again'},ops)[0]==409
+# There is no online payment yet: this local fixture stands in for money recorded by finance.
+from qa_accounts import sql
+sql("UPDATE bookings SET status='CONFIRMED',paid=530 WHERE id='%s';"%uuid.UUID(bid))
 status,request=call('bookings/'+bid+'/requests',{'kind':'CHANGE','message':'Please change the pickup time.'},auth);assert status==200,(status,request)
 assert call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Duplicate active request'},auth)[0]==409
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Missing amendment quote'},ops)[0]==409
@@ -58,28 +57,20 @@ amendment=make_quote(date=new_date)
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Date changed with customer agreement.','replacementQuoteId':amendment},ops)[1]['error']=='AMENDMENT_WORKFLOW_REQUIRED'
 updated=next(b for b in call('bookings',auth=auth)[1] if b['id']==bid);assert updated['quoteId']==qid
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':False,'note':'Paid amendment requires an accepted PDF contract.'},ops)[0]==200
-status,request=call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Please cancel the demo booking.'},auth);assert status==200
+status,request=call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'Please cancel the booking.'},auth);assert status==200
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Cannot bypass refund assessment.'},ops)[1]['error']=='CANCELLATION_REVIEW_REQUIRED'
 assert next(r for r in call('bookings/requests',auth=auth)[1] if r['id']==request['id'])['status']=='PENDING'
 assert call('operations/requests/'+request['id']+'/resolve',{'approve':True,'note':'Repeat cancellation'},ops)[0]==409
-assert call('bookings/'+bid+'/demo-payment',{'kind':'BALANCE','success':True},auth,str(uuid.uuid4()))[0]==409
 # Concurrent create and payment requests must not produce duplicate reservations or charges.
 qid=make_quote()
 with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
  results=list(pool.map(lambda _:call('bookings',{'quoteId':qid,'note':'Concurrency test'},auth),range(4)))
 assert all(status==200 for status,_ in results),results
 assert len(set(result['id'] for _,result in results))==1
-race=results[0][1]['id'];assert call('operations/bookings/'+race+'/review',{'approve':True,'note':'Race test approved'},ops)[0]==200
-with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
- results=list(pool.map(lambda _:call('bookings/'+race+'/demo-payment',{'kind':'DEPOSIT','success':True},auth,str(uuid.uuid4())),range(2)))
-assert sorted(status for status,_ in results)==[200,409],results
-status,pending=call('bookings/'+race+'/requests',{'kind':'CANCEL','message':'Pause further payment for office review'},auth);assert status==200
-status,blocked=call('bookings/'+race+'/demo-payment',{'kind':'BALANCE','success':True},auth,str(uuid.uuid4()));assert status==409 and blocked['error']=='REQUEST_PENDING'
-assert call('operations/requests/'+pending['id']+'/resolve',{'approve':False,'note':'Cancellation declined after customer discussion'},ops)[0]==200
-assert call('bookings/'+race+'/demo-payment',{'kind':'BALANCE','success':True},auth,str(uuid.uuid4()))[1]['paid']==530
+race=results[0][1]['id'];assert results[0][1]['status']=='PENDING_REVIEW'
 status,outbox=call('operations/notifications',auth=ops);assert status==200 and outbox
 email=next(n for n in outbox['items'] if n['channel']=='EMAIL')
 assert call('operations/notifications/'+email['id']+'/send-email',{},ops)[0]==409
 assert call('auth/logout',{},'Bearer '+login['token'])[0]==204
 assert call('auth/me',auth='Bearer '+login['token'])[0]==401
-print('Booking flow passed: registration, ownership, operator review, demo payments, idempotency, requests, concurrency, outbox and logout.')
+print('Booking flow passed: registration, ownership, operator review, offer-workflow gate, rejection, no demo payment endpoint, idempotency, requests, concurrency, outbox and logout.')

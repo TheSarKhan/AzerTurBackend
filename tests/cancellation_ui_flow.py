@@ -116,12 +116,6 @@ _,remaining=call(ctxpath,auth=auth)
 assert len(remaining['services'])==4 and all(s['key']!='hotel' for s in remaining['services'])
 assert call('operations/bookings/'+bid+'/offer',d,ops)[1]['error']=='PARTIAL_CANCELLATION_REQUIRES_MANUAL_REVIEW'
 assert call('operations/bookings/'+bid+'/payment-requests',{'contractId':contract['id'],'requestKey':str(uuid.uuid4()),'kind':'DEPOSIT','serviceKey':None,'amount':10},ops)[1]['error']=='PAYMENT_PLAN_REVIEW_REQUIRED'
-payment_req=urllib.request.Request(base+'/api/v1/bookings/'+bid+'/demo-payment',json.dumps({'kind':'BALANCE','success':True}).encode(),{'Content-Type':'application/json','Authorization':auth,'Idempotency-Key':str(uuid.uuid4())})
-try:
- urllib.request.urlopen(payment_req)
- raise AssertionError('Legacy payment bypassed the partial cancellation gate')
-except urllib.error.HTTPError as e:
- assert json.loads(e.read())['error']=='PAYMENT_PLAN_REVIEW_REQUIRED'
 
 assert call(ctxpath,body,auth)[1]['error']=='INVALID_SERVICE_SELECTION'
 body['serviceKeys']=[s['key'] for s in remaining['services']]

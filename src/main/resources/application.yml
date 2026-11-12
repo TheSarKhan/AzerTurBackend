@@ -42,7 +42,6 @@ server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
 app:
-  demo-payments: ${DEMO_PAYMENTS_ENABLED:true}
   notifications:
     push-enabled: ${PUSH_ENABLED:false}
     expo-access-token: ${EXPO_ACCESS_TOKEN:}

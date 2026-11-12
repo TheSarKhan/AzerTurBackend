@@ -5,7 +5,7 @@ exec(pathlib.Path('tests/cancellation_ui_flow.py').read_text().split("ctxpath=")
 # A synthetic historical receipt, not a payment provider operation.
 receipt_key=str(uuid.uuid4())
 status,issued=call('operations/bookings/'+bid+'/payment-requests',{'contractId':contract['id'],'requestKey':receipt_key,'kind':'DEPOSIT','serviceKey':None,'amount':200},ops);assert status==200,(status,issued)
-sql("UPDATE staged_payment_requests SET status='PAID' WHERE booking_id='%s' AND request_key='%s'; UPDATE bookings SET status='CONFIRMED' WHERE id='%s';"%(uuid.UUID(bid),uuid.UUID(receipt_key),uuid.UUID(bid)))
+status,paid_rows=call('operations/bookings/'+bid+'/payment-requests/'+next(r['id'] for r in issued if r['kind']=='DEPOSIT')+'/mark-paid',{'amount':200,'method':'BANK_TRANSFER','reference':'QA-HISTORICAL-RECEIPT'},ops);assert status==200,(status,paid_rows)
 fp='operations/bookings/'+bid
 _,fc=call(fp+'/allocation',auth=ops)
 shares={'transport':8000,'hotel':6000,'guide':4000,'transfer':1000,'activity':1000}
