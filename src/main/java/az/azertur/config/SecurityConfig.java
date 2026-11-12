@@ -42,6 +42,7 @@ public class SecurityConfig {
                         "/swagger-ui.html")
                     .permitAll()
                     .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/cities", "/api/v1/events", "/api/v1/events/*").permitAll()
+                    .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/contact").permitAll()
                     .requestMatchers("/api/v1/partner-sync/**").permitAll()
                     .requestMatchers("/api/v1/staff/auth/me", "/api/v1/staff/auth/logout").hasRole("OPERATIONS")
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")

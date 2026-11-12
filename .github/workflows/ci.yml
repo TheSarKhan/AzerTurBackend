@@ -71,6 +71,7 @@ jobs:
           python3 tests/booking_flow.py
           python3 tests/offer_flow.py
           python3 tests/payment_requests.py
+          python3 tests/contact_flow.py
           python3 tests/account_security_flow.py
           python3 tests/amendment_flow.py
           python3 tests/amendment_revision_flow.py
