@@ -117,6 +117,8 @@ row=paid[0];assert row['status']=='PAID' and row['payment_method']=='BANK_TRANSF
 assert call(mp,rec,ops)[1]['error']=='PAYMENT_ALREADY_RECORDED'
 assert next(x for x in call('bookings',auth=auth)[1] if x['id']==bid)['status']=='CONFIRMED'
 assert call('bookings/'+bid+'/payment-requests',auth=auth)[1][0]['status']=='PAID'
+assert 'payment_reference' not in call('bookings/'+bid+'/payment-requests',auth=auth)[1][0] and 'payment_reference' not in call('bookings/'+bid+'/payment-context',auth=auth)[1]['requests'][0]
+assert call('operations/bookings/'+bid+'/payment-requests',auth=ops)[1][0]['payment_reference']=='QA-REF-1'
 assert call('bookings/'+bid+'/payment-requests',auth=otherauth)[0]==404
 assert call(pp,payload|{'requestKey':str(uuid.uuid4())},ops)[1]['error']=='DEPOSIT_ALREADY_RECEIVED'
 assert [n for n in call('operations/notifications',auth=ops)[1]['items'] if n['event']=='PAYMENT_RECEIVED' and n['booking_id']==bid]

@@ -26,7 +26,12 @@ public class PaymentRequestService {
   public Object customer(UUID booking,UUID customer) {
     if (db.queryForObject("SELECT count(*) FROM bookings WHERE id=? AND customer_id=?",Integer.class,booking,customer)==0)
       throw DomainException.missing();
-    return list(booking);
+    return forCustomer(list(booking));
+  }
+  /** Customers see whether and how a request was paid, but not the staff-entered payment reference. */
+  @SuppressWarnings("unchecked")
+  public static Object forCustomer(Object rows) {
+    return ((List<Map<String,Object>>)rows).stream().map(m->{var c=new LinkedHashMap<String,Object>(m);c.remove("payment_reference");return c;}).toList();
   }
   public Object list(UUID booking) {
     return db.queryForList("SELECT id,contract_id,kind,service_key,amount_minor,currency,status,created_at,customer_message,paid_at,payment_method,payment_reference FROM staged_payment_requests WHERE booking_id=? ORDER BY created_at",booking);

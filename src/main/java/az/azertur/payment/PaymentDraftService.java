@@ -30,7 +30,7 @@ public class PaymentDraftService {
   }
   return out;
  }
- public Object customerContext(UUID id,UUID customer){if(db.queryForObject("SELECT count(*) FROM bookings WHERE id=? AND customer_id=?",Integer.class,id,customer)==0)throw DomainException.missing();return context(id);}
+ public Object customerContext(UUID id,UUID customer){if(db.queryForObject("SELECT count(*) FROM bookings WHERE id=? AND customer_id=?",Integer.class,id,customer)==0)throw DomainException.missing();@SuppressWarnings("unchecked") var out=new LinkedHashMap<String,Object>((Map<String,Object>)context(id));out.put("requests",PaymentRequestService.forCustomer(out.get("requests")));return out;}
  public Object draft(UUID id){return db.queryForList("SELECT version,payload,preview_version FROM payment_request_drafts WHERE booking_id=?",id).stream().findFirst().map(row->{var result=new LinkedHashMap<String,Object>(row);var d=json.readValue((String)row.get("payload"),Draft.class);result.put("sent",db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND request_key=?",Integer.class,id,d.requestKey())>0);return result;}).orElse(null);}
  @Transactional public Object save(UUID id,Draft d,String actor){
   lock(id);var c=(Map<?,?>)context(id);var contract=(Map<?,?>)c.get("contract");if(contract==null||!d.contractId().equals(contract.get("id")))throw DomainException.conflict("CURRENT_CONTRACT_ACCEPTANCE_REQUIRED");
