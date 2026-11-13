@@ -13,9 +13,9 @@ on:
         options: [api, mobile-web]
         default: api
       mobile_action:
-        description: Inspect infrastructure or deploy the mobile web client
+        description: Inspect infrastructure or deploy the mobile web client (client-only replaces just the static client and leaves nginx/TLS untouched)
         type: choice
-        options: [inspect, deploy, finalize, mobile-only]
+        options: [inspect, deploy, finalize, mobile-only, client-only]
         default: inspect
       mobile_ref:
         description: Exact tested mobile-client commit
@@ -107,16 +107,16 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 - < deploy/inspect-server.py
       - name: Checkout the pinned customer app
-        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only' || inputs.mobile_action == 'client-only'
         uses: actions/checkout@v4
         with:
           repository: TheSarKhan/AzerTurMobileClient
           ref: ${{ inputs.mobile_ref }}
           path: mobile-client
       - uses: docker/setup-buildx-action@v3
-        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only' || inputs.mobile_action == 'client-only'
       - name: Build tested production images
-        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only' || inputs.mobile_action == 'client-only'
         env:
           MOBILE_SHA: ${{ inputs.mobile_ref }}
           MOBILE_ACTION: ${{ inputs.mobile_action }}
@@ -127,7 +127,7 @@ jobs:
           fi
           docker buildx build --platform linux/amd64 --load -t "aztrip-mobile-web:$MOBILE_SHA" mobile-client
       - name: Ship pinned images
-        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only'
+        if: inputs.mobile_action == 'deploy' || inputs.mobile_action == 'mobile-only' || inputs.mobile_action == 'client-only'
         env:
           MOBILE_SHA: ${{ inputs.mobile_ref }}
           MOBILE_ACTION: ${{ inputs.mobile_action }}
@@ -149,7 +149,7 @@ jobs:
           print(json.dumps({'backend_sha':os.environ['GITHUB_SHA'],'mobile_sha':os.environ['MOBILE_SHA'],'smtp_password':os.environ['SMTP_PASSWORD']}))
           PYTHON
       - name: Replace only the static mobile client
-        if: inputs.mobile_action == 'mobile-only'
+        if: inputs.mobile_action == 'mobile-only' || inputs.mobile_action == 'client-only'
         env:
           MOBILE_SHA: ${{ inputs.mobile_ref }}
         run: |
