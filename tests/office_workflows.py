@@ -69,7 +69,8 @@ payment='operations/bookings/'+bid+'/payment-requests'
 deposit={'contractId':contract['id'],'requestKey':str(uuid.uuid4()),'kind':'DEPOSIT','serviceKey':None,'amount':200}
 assert call(payment,deposit,ops)[0]==200
 deposit_row=next(r for r in call(payment,auth=ops)[1] if r['kind']=='DEPOSIT')
-assert call(payment+'/'+deposit_row['id']+'/mark-paid',{'amount':200,'method':'BANK_TRANSFER','reference':'QA-RECEIPT'},ops)[0]==200
+# Any operator may record a deposit as received; a payment for a single service needs the finance role.
+assert call(payment+'/'+deposit_row['id']+'/mark-paid',{'amount':200,'method':'BANK_TRANSFER'},employee)[0]==200
 assert call(path,d,ops)[0]==409
 allocpath='operations/bookings/'+bid+'/allocation'
 shares={'transport':8000,'hotel':6000,'guide':4000,'transfer':1000,'activity':1000}

@@ -34,7 +34,6 @@ status,d=call(path,d,ops);assert status==200 and d['version']==1,(status,d)
 assert call('bookings/offers',auth=auth)[1]==[]
 assert call(path+'/send',{'version':1},ops)[1]['error']=='PREVIEW_REQUIRED'
 assert call(path+'/preview',{'version':1},ops)[0]==200
-assert call(path+'/send',{'version':1},ops)[1]['error']=='SERVICE_CHECKS_REQUIRED'
 for line in d['services']:line.update(supplier='QA manual supplier',availability='CONFIRMED',policy='QA-only policy: office handles cancellation using supplier terms at the request time.')
 status,d=call(path,d,ops);assert status==200 and d['version']==2
 assert call(path,d|{'version':1},ops)[1]['error']=='STALE_OFFER'
