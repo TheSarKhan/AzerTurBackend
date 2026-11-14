@@ -25,7 +25,7 @@ public class AccountSecurityController {
   }
   @PostMapping("/email-verification/request")
   public ResponseEntity<?> resend(@AuthenticationPrincipal CustomerAuthService.Customer c,HttpServletRequest request){
-    limits.check(request.getRemoteAddr(),"verify:"+c.id());security.verification(c.id());
+    limits.check(request.getRemoteAddr(),"verify:"+c.id());limits.cooldown("verify-cooldown:"+c.id(),60);security.verification(c.id());
     return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(Map.of("status","REQUEST_ACCEPTED"));
   }
   @PostMapping("/verify-email")

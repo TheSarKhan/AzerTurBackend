@@ -1,6 +1,7 @@
 package az.azertur.customer;
 
 import az.azertur.shared.DomainException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -22,6 +23,13 @@ public class AuthRateLimiter {
     // The website BFF shares a backend address; account limits remain independent.
     checkKey("auth-ip:" + address, 300);
     checkKey("auth-account:" + auth.hash(email.trim().toLowerCase(Locale.ROOT)), 10);
+  }
+
+  /** Allows one action per key every {@code seconds}; a second attempt inside the window is refused. */
+  public void cooldown(String key, int seconds) {
+    Boolean first = redis.opsForValue().setIfAbsent(key, "1", Duration.ofSeconds(seconds));
+    if (!Boolean.TRUE.equals(first))
+      throw new DomainException(HttpStatus.TOO_MANY_REQUESTS, "VERIFICATION_COOLDOWN");
   }
 
   private void checkKey(String key, int maximum) {

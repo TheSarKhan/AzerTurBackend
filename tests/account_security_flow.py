@@ -29,6 +29,7 @@ verify=link('VERIFY');assert len(verify)==43
 sql("UPDATE account_links SET expires_at=now()-interval '1 second' WHERE customer_id='%s' AND purpose='VERIFY';"%cid)
 assert call('auth/verify-email',{'token':verify})[0]==409
 assert call('auth/email-verification/request',{},auth)[0]==202
+assert call('auth/email-verification/request',{},auth)[0]==429
 verify=link('VERIFY')
 assert call('auth/reset-password',dict(token=verify,password=password,confirmation=password))[0]==409
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as p:results=list(p.map(lambda _:call('auth/verify-email',{'token':verify})[0],range(2)))
