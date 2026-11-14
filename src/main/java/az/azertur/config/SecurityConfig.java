@@ -31,7 +31,7 @@ public class SecurityConfig {
                     .requestMatchers("/api/v1/staff/auth/login", "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/verify-email")
                     .permitAll()
                     .requestMatchers(
-                        "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/logout-all", "/api/v1/auth/email-verification/**", "/api/v1/auth/sessions/**", "/api/v1/bookings/**")
+                        "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/logout-all", "/api/v1/auth/account-deletion", "/api/v1/auth/email-verification/**", "/api/v1/auth/sessions/**", "/api/v1/bookings/**")
                     .hasRole("CUSTOMER")
                     .requestMatchers(
                         "/actuator/health",
