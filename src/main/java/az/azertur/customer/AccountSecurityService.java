@@ -163,6 +163,13 @@ public class AccountSecurityService {
   public void revokeAll(UUID id) {
     customer(id); db.update("DELETE FROM customer_sessions WHERE customer_id=?",id); audit(id,"ALL_SESSIONS_REVOKED");
   }
+  @Transactional
+  public void requestDeletion(UUID id) {
+    customer(id);
+    int added=db.update("INSERT INTO account_deletion_requests(id,customer_id) VALUES(?,?) ON CONFLICT (customer_id) DO NOTHING",UUID.randomUUID(),id);
+    if(added>0) audit(id,"DELETION_REQUESTED");
+    db.update("DELETE FROM customer_sessions WHERE customer_id=?",id);
+  }
   @Scheduled(fixedDelay=15000)
   public void tick() {
     // Resolve reset requests even while SMTP is disabled; neither API timing nor response reveals account existence.

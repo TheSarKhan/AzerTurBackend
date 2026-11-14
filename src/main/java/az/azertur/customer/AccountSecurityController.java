@@ -41,6 +41,11 @@ public class AccountSecurityController {
   void revokeOthers(@AuthenticationPrincipal CustomerAuthService.Customer c,@RequestHeader("Authorization") String token){security.revokeOthers(c.id(),token.substring(7));}
   @PostMapping("/sessions/{id}/revoke") @ResponseStatus(HttpStatus.NO_CONTENT)
   void revoke(@PathVariable UUID id,@AuthenticationPrincipal CustomerAuthService.Customer c,@RequestHeader("Authorization") String token){security.revoke(c.id(),id,token.substring(7));}
+  @PostMapping("/account-deletion")
+  public ResponseEntity<?> deletion(@AuthenticationPrincipal CustomerAuthService.Customer c,HttpServletRequest request){
+    limits.check(request.getRemoteAddr(),"deletion:"+c.id());security.requestDeletion(c.id());
+    return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(Map.of("status","REQUEST_ACCEPTED"));
+  }
   @PostMapping("/logout-all") @ResponseStatus(HttpStatus.NO_CONTENT)
   void revokeAll(@AuthenticationPrincipal CustomerAuthService.Customer c){security.revokeAll(c.id());}
 }
