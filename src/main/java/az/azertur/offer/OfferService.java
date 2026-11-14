@@ -134,6 +134,58 @@ public class OfferService {
         .orElse(null);
   }
 
+  private static final Map<String, String> DEFAULT_POLICY =
+      Map.of(
+          "az",
+          "Ləğv və geri ödəniş şərtləri xidmətin təchizatçısından və ləğv vaxtından asılıdır. Komanda hər ləğv sorğusunu ayrıca nəzərdən keçirir.",
+          "en",
+          "Cancellation and refund terms depend on the service supplier and the time of cancellation. Our team reviews every cancellation request individually.",
+          "ru",
+          "Условия отмены и возврата зависят от поставщика услуги и времени отмены. Команда рассматривает каждый запрос на отмену отдельно.");
+
+  /** Operators no longer type cancellation terms by hand; a blank one gets the standard wording in the customer's language. */
+  private Draft withPolicies(UUID id, Draft d) {
+    if (d.services().stream().noneMatch(l -> l.policy().isBlank())) return d;
+    String locale =
+        db.queryForList(
+                "SELECT c.locale FROM bookings b JOIN customers c ON c.id=b.customer_id WHERE b.id=?",
+                String.class,
+                id)
+            .stream()
+            .findFirst()
+            .orElse("en");
+    String text = DEFAULT_POLICY.getOrDefault(locale, DEFAULT_POLICY.get("en"));
+    var lines =
+        d.services().stream()
+            .map(
+                l ->
+                    l.policy().isBlank()
+                        ? new Line(
+                            l.key(),
+                            l.name(),
+                            l.quantity(),
+                            l.nights(),
+                            l.unitPrice(),
+                            l.unit(),
+                            l.supplier(),
+                            l.location(),
+                            l.availability(),
+                            text,
+                            l.internalNote())
+                        : l)
+            .toList();
+    return new Draft(
+        d.version(),
+        d.sourceQuoteId(),
+        d.title(),
+        d.currency(),
+        d.itinerary(),
+        d.returnRoute(),
+        lines,
+        d.message(),
+        d.internalNote());
+  }
+
   private Draft draft(UUID id) {
     return db.queryForList("SELECT payload FROM offer_drafts WHERE booking_id=?", id).stream()
         .findFirst()
@@ -189,8 +241,7 @@ public class OfferService {
       total += amount;
       if (send
           && (!line.availability().equals("CONFIRMED")
-              || line.supplier().isBlank()
-              || line.policy().isBlank()))
+              || line.supplier().isBlank()))
         throw DomainException.conflict("SERVICE_CHECKS_REQUIRED");
     }
     if (total < 1 || total > 10000000) throw DomainException.bad("INVALID_OFFER_TOTAL");
@@ -212,6 +263,7 @@ public class OfferService {
   public Draft save(UUID id, Draft d, String actor) {
     var b = lock(id);
     editable(b);
+    d = withPolicies(id, d);
     validate(d, b, false);
     long current =
         db.queryForList("SELECT version FROM offer_drafts WHERE booking_id=?", id).stream()
@@ -308,6 +360,7 @@ public class OfferService {
     if (db.queryForObject(
             "SELECT preview_version FROM offer_drafts WHERE booking_id=?", Long.class, id)
         != version) throw DomainException.conflict("PREVIEW_REQUIRED");
+    d = withPolicies(id, d);
     validate(d, b, true);
     int revision =
         db.queryForObject(
