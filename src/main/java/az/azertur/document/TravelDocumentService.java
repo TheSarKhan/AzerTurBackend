@@ -55,7 +55,7 @@ public class TravelDocumentService {
   public Object upload(UUID id,MultipartFile file,Upload in,String actor)throws Exception{
     var b=booking(id,null,true);
     if(Set.of("CANCELLED","REJECTED").contains(b.get("status")))throw DomainException.conflict("BOOKING_NOT_ACTIVE");
-    if(!Set.of("flight","hotel","transport","guide","transfer","activity").contains(in.serviceKey()) || !Set.of("E_TICKET","BOARDING_PASS","HOTEL_VOUCHER","TRANSFER_VOUCHER","TOUR_VOUCHER","OTHER").contains(in.kind()))throw DomainException.bad("INVALID_DOCUMENT_TYPE");
+    if(!Set.of("flight","hotel","transport","guide","transfer","intercity","activity","event","meals","tickets","photographer").contains(in.serviceKey().replaceAll("-[0-9]+$","")) || !Set.of("E_TICKET","BOARDING_PASS","HOTEL_VOUCHER","TRANSFER_VOUCHER","TOUR_VOUCHER","OTHER").contains(in.kind()))throw DomainException.bad("INVALID_DOCUMENT_TYPE");
     if(in.title()==null||in.title().isBlank()||in.title().length()>160||in.startsAt()==null||in.endsAt()==null||!in.endsAt().isAfter(in.startsAt())||in.instructions()==null||in.instructions().length()>2000)throw DomainException.bad("INVALID_DOCUMENT_DETAILS");
     try {ZoneId.of(in.timezone());}catch(Exception e){throw DomainException.bad("INVALID_TIMEZONE");}
     if(cancelled(id,in.serviceKey()))throw DomainException.conflict("SERVICE_CANCELLED");

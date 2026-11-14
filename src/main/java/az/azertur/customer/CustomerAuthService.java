@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CustomerAuthService {
-  public record Customer(UUID id, String email, String name, String locale, boolean emailVerified) {}
+  public record Customer(UUID id, String email, String name, String locale, boolean emailVerified, String phone) {}
 
   public record Session(String token, Instant expires, Customer customer) {}
 
@@ -39,24 +39,53 @@ public class CustomerAuthService {
   }
 
   @Transactional
-  public Session register(String email, String password, String name, String locale, String userAgent) {
+  /** Keeps digits and a leading plus, e.g. "+994 50 123 45 67" becomes "+994501234567". */
+  public static String normalizePhone(String raw) {
+    if (raw == null || raw.isBlank()) return null;
+    String trimmed = raw.trim();
+    String digits = trimmed.replaceAll("[^0-9]", "");
+    if (digits.length() < 7 || digits.length() > 15) throw DomainException.bad("INVALID_PHONE");
+    return (trimmed.startsWith("+") ? "+" : "") + digits;
+  }
+
+  @Transactional
+  public Customer updatePhone(UUID id, String phone) {
+    String normalized = normalizePhone(phone);
+    if (normalized == null) throw DomainException.bad("INVALID_PHONE");
+    db.update("UPDATE customers SET phone=? WHERE id=?", normalized, id);
+    return db.queryForObject(
+        "SELECT * FROM customers WHERE id=?",
+        (r, n) ->
+            new Customer(
+                r.getObject("id", UUID.class),
+                r.getString("email"),
+                r.getString("name"),
+                r.getString("locale"),
+                r.getTimestamp("email_verified_at") != null,
+                r.getString("phone")),
+        id);
+  }
+
+  public Session register(String email, String password, String name, String locale, String phone, String userAgent) {
     if (password.getBytes(StandardCharsets.UTF_8).length > 72)
       throw DomainException.bad("PASSWORD_TOO_LONG");
+    String normalizedPhone = normalizePhone(phone);
     UUID id = UUID.randomUUID();
     String normalized = email.trim().toLowerCase(Locale.ROOT);
     try {
       db.update(
-          "INSERT INTO customers(id,email,name,password_hash,locale) VALUES(?,?,?,?,?)",
+          "INSERT INTO customers(id,email,name,password_hash,locale,phone) VALUES(?,?,?,?,?,?)",
           id,
           normalized,
           name.trim(),
           encoder.encode(password),
-          locale);
+          locale,
+          normalizedPhone);
     } catch (org.springframework.dao.DuplicateKeyException e) {
       throw DomainException.conflict("ACCOUNT_UNAVAILABLE");
     }
     security.verification(id);
-    return createSession(new Customer(id, normalized, name.trim(), locale,false),userAgent);
+    return createSession(new Customer(id, normalized, name.trim(), locale, false, normalizedPhone),userAgent);
   }
 
   @Transactional
@@ -70,7 +99,7 @@ public class CustomerAuthService {
                         r.getObject("id", UUID.class),
                         r.getString("email"),
                         r.getString("name"),
-                        r.getString("locale"),r.getTimestamp("email_verified_at")!=null),
+                        r.getString("locale"),r.getTimestamp("email_verified_at")!=null,r.getString("phone")),
                     r.getString("password_hash")),
             email.trim().toLowerCase(Locale.ROOT));
     String encoded = rows.isEmpty() ? dummyHash : rows.getFirst().getValue();
@@ -106,7 +135,7 @@ public class CustomerAuthService {
                     r.getObject("id", UUID.class),
                     r.getString("email"),
                     r.getString("name"),
-                    r.getString("locale"),r.getTimestamp("email_verified_at")!=null),
+                    r.getString("locale"),r.getTimestamp("email_verified_at")!=null,r.getString("phone")),
             hash(token))
         .stream()
         .findFirst();

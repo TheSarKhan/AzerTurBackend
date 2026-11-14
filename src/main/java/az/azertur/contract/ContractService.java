@@ -14,7 +14,9 @@ import org.springframework.web.multipart.MultipartFile;
 public class ContractService {
   private final JdbcTemplate db;
   private final boolean email;
-  public ContractService(JdbcTemplate db, @Value("${app.notifications.email-enabled:false}") boolean email) { this.db = db; this.email = email; }
+  private final tools.jackson.databind.ObjectMapper json;
+  private final ContractPdf pdf;
+  public ContractService(JdbcTemplate db, tools.jackson.databind.ObjectMapper json, ContractPdf pdf, @Value("${app.notifications.email-enabled:false}") boolean email) { this.db = db; this.json = json; this.pdf = pdf; this.email = email; }
 
   private Map<String,Object> booking(UUID id) {
     return db.queryForList("SELECT * FROM bookings WHERE id=? FOR UPDATE", id).stream().findFirst().orElseThrow(DomainException::missing);
@@ -69,6 +71,27 @@ public class ContractService {
     db.update("INSERT INTO contract_documents(id,booking_id,offer_id,version,filename,content,sha256,state,created_by) VALUES(?,?,?,?,?,?,?,'DRAFT',?)",document,id,offer,version,name,bytes,hash,actor);
     audit(id,actor,"CONTRACT_DRAFT_SAVED",document.toString());
     return summary(document(id,document));
+  }
+  /**
+   * Builds the contract from the latest sent offer, in the customer's language, and saves it as a draft the
+   * office can review and send. An earlier draft is replaced; a contract that was already sent stays.
+   */
+  // A failed contract must never undo the offer that triggered it, so no exception rolls this back.
+  @Transactional(noRollbackFor = Exception.class)
+  public Object generate(UUID id, String actor) throws Exception {
+    var b = booking(id); active(b); var offerId = latestOffer(id, b.get("quote_id"));
+    var offer = json.readValue(db.queryForObject("SELECT payload FROM offer_revisions WHERE id=?", String.class, offerId), az.azertur.offer.OfferService.PublicOffer.class);
+    var customer = db.queryForMap("SELECT name,email,phone,locale FROM customers WHERE id=?", b.get("customer_id"));
+    int version = db.queryForObject("SELECT coalesce(max(version),0)+1 FROM contract_documents WHERE booking_id=?", Integer.class, id);
+    String number = id.toString().substring(0, 8).toUpperCase() + "-" + version;
+    byte[] bytes = pdf.build(new ContractPdf.Input(number, java.time.LocalDate.now(java.time.ZoneId.of("Asia/Baku")).toString(), String.valueOf(customer.get("locale")),
+        String.valueOf(customer.get("name")), String.valueOf(customer.get("email")), customer.get("phone") == null ? "" : String.valueOf(customer.get("phone")), offer));
+    String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    db.update("UPDATE contract_documents SET state='SUPERSEDED' WHERE booking_id=? AND state='DRAFT'", id);
+    UUID document = UUID.randomUUID();
+    db.update("INSERT INTO contract_documents(id,booking_id,offer_id,version,filename,content,sha256,state,created_by) VALUES(?,?,?,?,?,?,?,'DRAFT',?)", document, id, offerId, version, "contract-" + number + ".pdf", bytes, hash, actor);
+    audit(id, actor, "CONTRACT_GENERATED", document.toString());
+    return summary(document(id, document));
   }
   private void audit(UUID id,String actor,String action,String note) {
     db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,?,?)",UUID.randomUUID(),id,actor,action,note);

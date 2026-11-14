@@ -15,12 +15,24 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class OfferService {
+  // One entry per place; several places can share a day. Older offers have no day number: every entry is
+  // then a day of its own.
   public record Day(
       @NotBlank @Pattern(regexp = "Baku|Quba|Khinalug|Gabala|Sheki") String city,
-      @NotBlank @Size(max = 1500) String description) {}
+      @NotBlank @Size(max = 1500) String description,
+      @Min(1) @Max(14) Integer day) {
+    public Day(String city, String description) {
+      this(city, description, null);
+    }
+  }
 
   public record Line(
-      @NotBlank @Pattern(regexp = "transport|hotel|guide|transfer|activity") String key,
+      // One line per service; a second line of the same kind gets a suffix, for example "guide-2".
+      @NotBlank
+          @Pattern(
+              regexp =
+                  "(transport|hotel|guide|transfer|intercity|activity|event|meals|tickets|photographer)(-[0-9]{1,2})?")
+          String key,
       @NotBlank @Size(max = 160) String name,
       @Min(1) @Max(168) int quantity,
       @Min(1) @Max(14) int nights,
@@ -31,18 +43,66 @@ public class OfferService {
       @NotNull @Size(max = 100) String location,
       @NotNull @Pattern(regexp = "NOT_CHECKED|CONFIRMED|UNAVAILABLE") String availability,
       @NotNull @Size(max = 4000) String policy,
-      @NotNull @Size(max = 2000) String internalNote) {}
+      @NotNull @Size(max = 2000) String internalNote,
+      // Which row of the route the service belongs to: 0 start, 1..days the days, days+1 the end.
+      @Min(0) @Max(40) Integer row,
+      // What the office pays and the margin on top (internal only). When a cost is given, the customer
+      // price (unitPrice) is worked out from them on save; older offers have neither.
+      @DecimalMin("0.000001") @DecimalMax("100000") @Digits(integer = 6, fraction = 6)
+          BigDecimal costPrice,
+      @DecimalMin("-100") @DecimalMax("300") @Digits(integer = 3, fraction = 2)
+          BigDecimal marginPercent,
+      // A customer price the office typed by hand. It wins over cost plus margin, and the margin is then
+      // only worked out from it.
+      @DecimalMin("0.000001") @DecimalMax("100000") @Digits(integer = 6, fraction = 6)
+          BigDecimal fixedPrice) {}
 
   public record Draft(
       @Min(0) long version,
       @NotNull UUID sourceQuoteId,
       @NotBlank @Size(max = 160) String title,
       @NotNull @Pattern(regexp = "EUR|USD|AZN") String currency,
-      @NotNull @Size(min = 1, max = 14) List<@Valid @NotNull Day> itinerary,
+      @NotNull @Size(min = 1, max = 30) List<@Valid @NotNull Day> itinerary,
       @NotNull @Size(max = 1500) String returnRoute,
-      @NotNull @Size(min = 1, max = 5) List<@Valid @NotNull Line> services,
+      @NotNull @Size(min = 1, max = 40) List<@Valid @NotNull Line> services,
       @NotNull @Size(max = 2000) String message,
-      @NotNull @Size(max = 4000) String internalNote) {}
+      @NotNull @Size(max = 4000) String internalNote,
+      @Pattern(regexp = "Baku|Quba|Khinalug|Gabala|Sheki") String startCity,
+      @Pattern(regexp = "Baku|Quba|Khinalug|Gabala|Sheki") String endCity) {}
+
+  /** "guide-2" is a second guide line; its kind is "guide". */
+  public static String baseKey(String key) {
+    return key.replaceAll("-[0-9]+$", "");
+  }
+
+  /** The customer price of a line that has a cost: cost plus the margin, to six decimals. */
+  static Line priced(Line l) {
+    if (l.fixedPrice() != null) {
+      BigDecimal margin =
+          l.costPrice() == null || l.costPrice().signum() == 0
+              ? l.marginPercent()
+              : l.fixedPrice()
+                  .divide(l.costPrice(), 8, RoundingMode.HALF_UP)
+                  .subtract(BigDecimal.ONE)
+                  .movePointRight(2)
+                  .setScale(2, RoundingMode.HALF_UP)
+                  .max(BigDecimal.valueOf(-100))
+                  .min(BigDecimal.valueOf(300));
+      return new Line(
+          l.key(), l.name(), l.quantity(), l.nights(), l.fixedPrice(), l.unit(), l.supplier(),
+          l.location(), l.availability(), l.policy(), l.internalNote(), l.row(), l.costPrice(), margin,
+          l.fixedPrice());
+    }
+    if (l.costPrice() == null) return l;
+    BigDecimal margin = l.marginPercent() == null ? BigDecimal.valueOf(15) : l.marginPercent();
+    BigDecimal price =
+        l.costPrice()
+            .multiply(BigDecimal.ONE.add(margin.movePointLeft(2)))
+            .setScale(6, RoundingMode.HALF_UP);
+    return new Line(
+        l.key(), l.name(), l.quantity(), l.nights(), price, l.unit(), l.supplier(), l.location(),
+        l.availability(), l.policy(), l.internalNote(), l.row(), l.costPrice(), margin, null);
+  }
 
   public record Version(@Min(1) long version) {}
 
@@ -54,7 +114,14 @@ public class OfferService {
       BigDecimal unitPrice,
       String unit,
       int total,
-      String policy) {}
+      String policy,
+      // The place of the route the service belongs to: 0 start, 1..n the places, n+1 the end.
+      Integer row) {
+    public PublicLine(
+        String key, String name, int quantity, int nights, BigDecimal unitPrice, String unit, int total, String policy) {
+      this(key, name, quantity, nights, unitPrice, unit, total, policy, null);
+    }
+  }
 
   public record PublicOffer(
       UUID id,
@@ -70,18 +137,31 @@ public class OfferService {
       List<PublicLine> services,
       int total,
       String message,
-      String sentAt) {}
+      String sentAt,
+      String startCity,
+      String endCity) {
+    public PublicOffer(
+        UUID id, UUID bookingId, int revision, long draftVersion, String title, String currency, String date,
+        int travelers, List<Day> itinerary, String returnRoute, List<PublicLine> services, int total,
+        String message, String sentAt) {
+      this(id, bookingId, revision, draftVersion, title, currency, date, travelers, itinerary, returnRoute,
+          services, total, message, sentAt, null, null);
+    }
+  }
 
   private final JdbcTemplate db;
   private final ObjectMapper json;
   private final boolean email;
+  private final az.azertur.contract.ContractService contracts;
 
   public OfferService(
       JdbcTemplate db,
       ObjectMapper json,
+      az.azertur.contract.ContractService contracts,
       @Value("${app.notifications.email-enabled:false}") boolean email) {
     this.db = db;
     this.json = json;
+    this.contracts = contracts;
     this.email = email;
   }
 
@@ -100,7 +180,7 @@ public class OfferService {
   public Object customerInfo(UUID id) {
     return db
         .queryForList(
-            "SELECT c.name,c.email,c.locale FROM bookings b JOIN customers c ON c.id=b.customer_id WHERE b.id=?",
+            "SELECT c.name,c.email,c.phone,c.locale FROM bookings b JOIN customers c ON c.id=b.customer_id WHERE b.id=?",
             id)
         .stream()
         .findFirst()
@@ -171,7 +251,11 @@ public class OfferService {
                             l.location(),
                             l.availability(),
                             text,
-                            l.internalNote())
+                            l.internalNote(),
+                            l.row(),
+                            l.costPrice(),
+                            l.marginPercent(),
+                            l.fixedPrice())
                         : l)
             .toList();
     return new Draft(
@@ -183,7 +267,9 @@ public class OfferService {
         d.returnRoute(),
         lines,
         d.message(),
-        d.internalNote());
+        d.internalNote(),
+        d.startCity(),
+        d.endCity());
   }
 
   private Draft draft(UUID id) {
@@ -203,50 +289,47 @@ public class OfferService {
     if (!d.currency().equals(b.get("currency"))) throw DomainException.bad("CURRENCY_MISMATCH");
     var keys = new HashSet<String>();
     long total = 0;
-    var routes =
-        Map.of(
-            "Baku",
-            List.of("Baku", "Quba", "Gabala"),
-            "Quba",
-            List.of("Quba", "Baku", "Khinalug"),
-            "Khinalug",
-            List.of("Khinalug", "Quba"),
-            "Gabala",
-            List.of("Gabala", "Baku", "Sheki"),
-            "Sheki",
-            List.of("Sheki", "Gabala"));
-    for (int i = 1; i < d.itinerary().size(); i++)
-      if (!routes.get(d.itinerary().get(i - 1).city()).contains(d.itinerary().get(i).city()))
-        throw DomainException.bad("INVALID_ROUTE");
+    // Any destination may follow any other (the team arranges the transfers); the city names are
+    // checked by the Day record, the same way the quote and the planner do it. Day numbers, when given,
+    // start at 1 and go up one day at a time.
+    if (d.itinerary().get(0).day() != null) {
+      int previous = 0;
+      for (var place : d.itinerary()) {
+        if (place.day() == null
+            || place.day() < Math.max(previous, 1)
+            || place.day() > previous + 1)
+          throw DomainException.bad("INVALID_ROUTE");
+        previous = place.day();
+      }
+    }
     for (Line line : d.services()) {
       if (!keys.add(line.key())) throw DomainException.bad("DUPLICATE_SERVICE");
-      if (!line.key().equals("hotel") && line.nights() != 1)
+      String kind = baseKey(line.key());
+      if (!kind.equals("hotel") && line.nights() != 1)
         throw DomainException.bad("INVALID_SERVICE_UNITS");
       var units =
           Map.of(
-              "transport",
-              "day",
-              "hotel",
-              "room",
-              "guide",
-              "day",
-              "transfer",
-              "transfer",
-              "activity",
-              "person");
-      if (!units.get(line.key()).equals(line.unit()))
-        throw DomainException.bad("INVALID_SERVICE_UNITS");
+              "transport", "day",
+              "hotel", "room",
+              "guide", "day",
+              "transfer", "transfer",
+              "intercity", "transfer",
+              "activity", "person",
+              "event", "person",
+              "meals", "person",
+              "tickets", "person",
+              "photographer", "day");
+      if (!units.get(kind).equals(line.unit())) throw DomainException.bad("INVALID_SERVICE_UNITS");
+      if (line.row() != null && line.row() > d.itinerary().size() + 1)
+        throw DomainException.bad("INVALID_SERVICE_ROW");
       long amount = amount(line);
       if (amount < 1) throw DomainException.bad("INVALID_SERVICE_PRICE");
       total += amount;
-      if (send
-          && (!line.availability().equals("CONFIRMED")
-              || line.supplier().isBlank()))
-        throw DomainException.conflict("SERVICE_CHECKS_REQUIRED");
+      // The office no longer has to tick "available" and name a supplier on every line before sending.
     }
     if (total < 1 || total > 10000000) throw DomainException.bad("INVALID_OFFER_TOTAL");
-    if (send && (d.message().isBlank() || d.returnRoute().isBlank()))
-      throw DomainException.conflict("OFFER_DETAILS_REQUIRED");
+    // The trip is a tour, so there is no separate return route to describe; only the message is needed.
+    if (send && d.message().isBlank()) throw DomainException.conflict("OFFER_DETAILS_REQUIRED");
   }
 
   private void audit(UUID id, String actor, String action) {
@@ -264,6 +347,11 @@ public class OfferService {
     var b = lock(id);
     editable(b);
     d = withPolicies(id, d);
+    d =
+        new Draft(
+            d.version(), d.sourceQuoteId(), d.title(), d.currency(), d.itinerary(), d.returnRoute(),
+            d.services().stream().map(OfferService::priced).toList(), d.message(), d.internalNote(),
+            d.startCity(), d.endCity());
     validate(d, b, false);
     long current =
         db.queryForList("SELECT version FROM offer_drafts WHERE booking_id=?", id).stream()
@@ -281,7 +369,9 @@ public class OfferService {
             d.returnRoute(),
             d.services(),
             d.message(),
-            d.internalNote());
+            d.internalNote(),
+            d.startCity(),
+            d.endCity());
     db.update(
         "INSERT INTO offer_drafts(booking_id,version,payload,updated_by) VALUES(?,?,?,?) ON CONFLICT(booking_id) DO UPDATE SET version=excluded.version,payload=excluded.payload,preview_version=0,updated_by=excluded.updated_by,updated_at=now()",
         id,
@@ -306,7 +396,15 @@ public class OfferService {
                         l.unitPrice(),
                         l.unit(),
                         amount(l),
-                        l.policy()))
+                        l.policy(),
+                        // Older drafts have no row: transfers belong to the start, the rest to the first place.
+                        Math.min(
+                            Math.max(
+                                l.row() != null
+                                    ? l.row()
+                                    : baseKey(l.key()).startsWith("transfer") ? 0 : 1,
+                                0),
+                            d.itinerary().size() + 1)))
             .toList();
     var original = json.readTree((String) b.get("quote_payload"));
     return new PublicOffer(
@@ -323,7 +421,9 @@ public class OfferService {
         lines,
         lines.stream().mapToInt(PublicLine::total).sum(),
         d.message(),
-        sentAt);
+        sentAt,
+        d.startCity() == null ? "Baku" : d.startCity(),
+        d.endCity() == null ? "Baku" : d.endCity());
   }
 
   @Transactional
@@ -378,6 +478,12 @@ public class OfferService {
         actor,
         d.sourceQuoteId());
     audit(id, actor, "OFFER_SENT");
+    // The contract for this offer is prepared right away; the office reviews it and sends it separately.
+    try {
+      contracts.generate(id, actor);
+    } catch (Exception e) {
+      audit(id, actor, "CONTRACT_GENERATION_FAILED");
+    }
     for (String channel : List.of("EMAIL", "WHATSAPP", "PUSH"))
       db.update(
           "INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,?,?,?,?)",

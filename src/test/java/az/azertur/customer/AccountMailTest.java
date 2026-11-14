@@ -14,7 +14,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.ObjectMapper;
 class AccountMailTest {
  static final String KEY=Base64.getEncoder().encodeToString(new byte[32]);
- AccountSecurityService service(JdbcTemplate db,JavaMailSender mail,boolean enabled,String origin){return new AccountSecurityService(db,new ObjectMapper(),mail,mock(PlatformTransactionManager.class),KEY,origin,enabled,"qa@example.com",java.time.Instant.EPOCH);}
+ AccountSecurityService service(JdbcTemplate db,JavaMailSender mail,boolean enabled,String origin){return new AccountSecurityService(db,new ObjectMapper(),mail,mock(PlatformTransactionManager.class),KEY,origin,"",enabled,"qa@example.com",java.time.Instant.EPOCH);}
+ @Test void rejectsUntrustedWebOrigin(){assertThrows(IllegalStateException.class,()->new AccountSecurityService(mock(JdbcTemplate.class),new ObjectMapper(),mock(JavaMailSender.class),mock(PlatformTransactionManager.class),KEY,"https://app.example.com","http://example.com",false,"qa@example.com",java.time.Instant.EPOCH));}
+ @Test void acceptsAnAppOriginWithoutExplicitWebOrigin(){service(mock(JdbcTemplate.class),mock(JavaMailSender.class),false,"https://app.example.com");}
  @Test void disabledTransportNeverContactsSmtp(){var db=mock(JdbcTemplate.class);var mail=mock(JavaMailSender.class);service(db,mail,false,"https://example.com").deliver(UUID.randomUUID());verifyNoInteractions(db,mail);}
  @Test void rejectsUntrustedOrigins(){for(var origin:List.of("http://example.com","https://example.com/other","https://user@example.com","https://example.com?redirect=evil"))assertThrows(IllegalStateException.class,()->service(mock(JdbcTemplate.class),mock(JavaMailSender.class),false,origin));}
  @Test void successfulEncryptedMailIsSentOnceAndCipherWiped()throws Exception{exercise(false);}

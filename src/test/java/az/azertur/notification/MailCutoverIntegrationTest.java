@@ -36,7 +36,7 @@ class MailCutoverIntegrationTest {
   delivery.tick();assertEquals("WAITING_CONFIGURATION",db.queryForObject("SELECT status FROM notification_outbox WHERE id=?",String.class,oldNotice));
   verify(mail,times(1)).send(any(SimpleMailMessage.class));
 
-  var security=new AccountSecurityService(db,new ObjectMapper(),mail,new DataSourceTransactionManager(ds),Base64.getEncoder().encodeToString(new byte[32]),"http://127.0.0.1:4182",true,"qa@example.com",cutoff);
+  var security=new AccountSecurityService(db,new ObjectMapper(),mail,new DataSourceTransactionManager(ds),Base64.getEncoder().encodeToString(new byte[32]),"http://127.0.0.1:4182","",true,"qa@example.com",cutoff);
   UUID oldCustomer=UUID.randomUUID(),newCustomer=UUID.randomUUID();
   for(UUID id:List.of(oldCustomer,newCustomer))db.update("INSERT INTO customers(id,email,name,password_hash,locale) VALUES(?,?,'Account cutover QA','not-a-real-password-hash','en')",id,"account-cutover-"+id+"@example.com");
   security.verification(oldCustomer);security.verification(newCustomer);
@@ -57,7 +57,7 @@ class MailCutoverIntegrationTest {
   Flyway.configure().dataSource(ds).load().migrate();var db=new JdbcTemplate(ds);var mail=mock(JavaMailSender.class);
   Instant cutoff=Instant.now().minusSeconds(60);UUID customer=UUID.randomUUID();
   db.update("INSERT INTO customers(id,email,name,password_hash,locale) VALUES(?,?,'Verification cutover QA','not-a-real-password-hash','en')",customer,"verify-cutover-"+customer+"@example.com");
-  var security=new AccountSecurityService(db,new ObjectMapper(),mail,new DataSourceTransactionManager(ds),Base64.getEncoder().encodeToString(new byte[32]),"http://127.0.0.1:4182",true,"qa@example.com",cutoff);
+  var security=new AccountSecurityService(db,new ObjectMapper(),mail,new DataSourceTransactionManager(ds),Base64.getEncoder().encodeToString(new byte[32]),"http://127.0.0.1:4182","",true,"qa@example.com",cutoff);
   security.verification(customer);UUID old=db.queryForObject("SELECT id FROM account_mail_jobs WHERE customer_id=?",UUID.class,customer);
   db.update("UPDATE account_mail_jobs SET created_at=?,state='WAITING_CONFIGURATION' WHERE id=?",Timestamp.from(cutoff.minusSeconds(1)),old);
   security.verification(customer);security.verification(customer);

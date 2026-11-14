@@ -51,10 +51,20 @@ app:
     site-origin: ${SITE_ORIGIN:https://aztrip.online}
   contact:
     inbox: ${CONTACT_INBOX:}
+  # The company details printed in the generated contract. Blank fields print as a line to fill in by hand.
+  company:
+    name: ${COMPANY_NAME:AzTrip}
+    voen: ${COMPANY_VOEN:}
+    address: ${COMPANY_ADDRESS:}
+    phone: ${COMPANY_PHONE:}
+    email: ${COMPANY_EMAIL:}
+    bank: ${COMPANY_BANK:}
+    signatory: ${COMPANY_SIGNATORY:}
   cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081}
   security:
     account-link-key: ${ACCOUNT_LINK_KEY}
     portal-origin: ${PORTAL_ORIGIN:http://127.0.0.1:4182}
+    web-origin: ${WEB_ORIGIN:}
     operations-user: ${OPERATIONS_USER:operations}
     operations-password: ${OPERATIONS_PASSWORD}
 management:

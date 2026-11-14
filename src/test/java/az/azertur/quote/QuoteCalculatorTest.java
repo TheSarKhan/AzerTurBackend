@@ -21,7 +21,11 @@ class QuoteCalculatorTest {
         false,
         currency,
         days,
-        cities);
+        cities,
+        null,
+        null,
+        null,
+        null);
   }
 
   @Test
@@ -67,5 +71,87 @@ class QuoteCalculatorTest {
         new QuoteCalculator()
             .calculate(input("EUR", 3, List.of("Baku", "Quba", "Khinalug")), 2)
             .total());
+  }
+
+  @Test
+  void startAndEndDefaultToBakuAndDoNotChangeThePrice() {
+    var calculator = new QuoteCalculator();
+    var plain = input("EUR", 2, List.of("Quba", "Khinalug"));
+    var chosen =
+        new QuoteInput(
+            plain.slug(), plain.date(), plain.pax(), plain.hotel(), plain.driver(), plain.stay(),
+            plain.guide(), plain.guideLanguage(), plain.transfer(), plain.activity(),
+            plain.currency(), plain.customDays(), plain.cities(), null, "Gabala", "Sheki", null);
+    var a = calculator.calculate(plain, 2);
+    var b = calculator.calculate(chosen, 2);
+    assertEquals("Baku", a.input().startCity());
+    assertEquals("Baku", a.input().endCity());
+    assertEquals("Gabala", b.input().startCity());
+    assertEquals("Sheki", b.input().endCity());
+    assertEquals(a.total(), b.total());
+  }
+
+  private QuoteInput withPlan(List<QuoteInput.DayPlan> plan) {
+    var base = input("EUR", null, null);
+    return new QuoteInput(
+        base.slug(), base.date(), 2, "comfort", null, null, false, "en", false, false, "EUR",
+        null, null, null, null, null, plan);
+  }
+
+  private QuoteInput.DayPlan day(QuoteInput.Place... places) {
+    return new QuoteInput.DayPlan(List.of(places));
+  }
+
+  private QuoteInput.Place place(String city, String... services) {
+    return new QuoteInput.Place(city, List.of(services));
+  }
+
+  @Test
+  void aDayPlanFixesTheDaysRouteAndFlags() {
+    var q =
+        withPlan(
+                List.of(
+                    day(place("Quba", "transport", "guide"), place("Khinalug", "activity", "meals")),
+                    day(place("Sheki", "hotel", "transfer", "photographer"))))
+            .withEnds();
+    assertEquals(2, q.customDays());
+    assertEquals(List.of("Quba", "Sheki"), q.cities());
+    assertTrue(q.guide() && q.transfer() && q.activity());
+    assertEquals(List.of("meals", "photographer"), q.extras());
+  }
+
+  @Test
+  void aCarAndAGuideCountOncePerDayButATransferCountsPerPlace() {
+    var calculator = new QuoteCalculator();
+    var oneDayTwoPlaces =
+        withPlan(List.of(day(place("Quba", "transport", "guide", "transfer"), place("Khinalug", "transport", "guide", "transfer"))));
+    var r = calculator.calculate(oneDayTwoPlaces, 1);
+    var amounts = new java.util.HashMap<String, Integer>();
+    r.lines().forEach(l -> amounts.put(l.label(), l.amount()));
+    assertEquals(90, amounts.get("transport"));
+    assertEquals(65, amounts.get("guide"));
+    assertEquals(70, amounts.get("transfer"));
+  }
+
+  @Test
+  void aPlanWithoutAMainServiceIsRejected() {
+    var calculator = new QuoteCalculator();
+    var onlyExtras = withPlan(List.of(day(place("Quba", "meals"))));
+    assertThrows(IllegalArgumentException.class, () -> calculator.calculate(onlyExtras, 1));
+  }
+
+  @Test
+  void aTransferToTheNextRegionIsPricedPerLegInTheTransferLine() {
+    var calculator = new QuoteCalculator();
+    var plan =
+        withPlan(
+            List.of(
+                day(place("Quba", "transport", "intercity")),
+                day(place("Khinalug", "intercity", "transfer"))));
+    var q = plan.withEnds();
+    assertTrue(q.transfer());
+    var r = calculator.calculate(plan, 2);
+    var transfer = r.lines().stream().filter(l -> l.label().equals("transfer")).findFirst().orElseThrow();
+    assertEquals(35 + 2 * 60, transfer.amount());
   }
 }

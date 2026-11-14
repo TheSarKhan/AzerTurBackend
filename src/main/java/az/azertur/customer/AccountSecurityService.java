@@ -28,7 +28,7 @@ public class AccountSecurityService {
   private final JavaMailSender mail;
   private final TransactionTemplate tx;
   private final byte[] key;
-  private final String origin, sender;
+  private final String origin, webOrigin, sender;
   private final boolean email;
   private final java.sql.Timestamp notBefore;
   private final SecureRandom random = new SecureRandom();
@@ -37,6 +37,7 @@ public class AccountSecurityService {
       PlatformTransactionManager transactions,
       @Value("${app.security.account-link-key}") String secret,
       @Value("${app.security.portal-origin}") String origin,
+      @Value("${app.security.web-origin:}") String webOrigin,
       @Value("${app.notifications.email-enabled:false}") boolean email,
       @Value("${app.notifications.from:}") String sender,
       @Value("${app.notifications.email-not-before:1970-01-01T00:00:00Z}") Instant notBefore) {
@@ -49,7 +50,16 @@ public class AccountSecurityService {
         || !(uri.getPath().isEmpty()||uri.getPath().equals("/"))
         || !(uri.getScheme().equals("https") || uri.getScheme().equals("http") && Set.of("localhost","127.0.0.1","[::1]").contains(uri.getHost())))
       throw new IllegalStateException("PORTAL_ORIGIN must be a trusted HTTPS origin (HTTP is allowed on loopback only)");
-    this.origin=origin.replaceAll("/+$",""); this.email=email; this.sender=sender; this.notBefore=java.sql.Timestamp.from(notBefore);
+    this.origin=origin.replaceAll("/+$","");
+    // Customers who sign up on the website get links to the website. Without WEB_ORIGIN it is the portal origin
+    // without its "app." prefix (https://app.aztrip.online becomes https://aztrip.online).
+    String web=webOrigin==null||webOrigin.isBlank()?this.origin.replaceFirst("^(https?://)app\\.","$1"):webOrigin.replaceAll("/+$","");
+    URI webUri=URI.create(web);
+    if(webUri.getHost()==null || webUri.getUserInfo()!=null || webUri.getQuery()!=null || webUri.getFragment()!=null
+        || !(webUri.getPath().isEmpty()||webUri.getPath().equals("/"))
+        || !(webUri.getScheme().equals("https") || webUri.getScheme().equals("http") && Set.of("localhost","127.0.0.1","[::1]").contains(webUri.getHost())))
+      throw new IllegalStateException("WEB_ORIGIN must be a trusted HTTPS origin (HTTP is allowed on loopback only)");
+    this.webOrigin=web; this.email=email; this.sender=sender; this.notBefore=java.sql.Timestamp.from(notBefore);
   }
 
   private String hash(String value) {
@@ -77,6 +87,15 @@ public class AccountSecurityService {
       return new String(cipher.doFinal((byte[])job.get("cipher")),StandardCharsets.UTF_8);
     } catch(Exception e) { throw new IllegalStateException("ACCOUNT_MAIL_DECRYPTION_FAILED"); }
   }
+  /** "web" when the request came through the website, otherwise "app" (the mobile client). */
+  private static String requestClient() {
+    try {
+      var attributes=org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes();
+      if(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet)
+        return "web".equals(servlet.getRequest().getHeader("X-AzTrip-Client"))?"web":"app";
+    } catch(IllegalStateException noRequest) { /* a job started outside a request */ }
+    return "app";
+  }
   private void audit(UUID id,String action) {
     db.update("INSERT INTO customer_security_audit(id,customer_id,action) VALUES(?,?,?)",UUID.randomUUID(),id,action);
   }
@@ -90,7 +109,8 @@ public class AccountSecurityService {
     String token=Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     Instant expires=Instant.now().plus(purpose.equals("VERIFY")?Duration.ofHours(24):Duration.ofMinutes(30));
     db.update("INSERT INTO account_links(id,customer_id,purpose,token_hash,expires_at) VALUES(?,?,?,?,?)",link,customer,purpose,hash(token),java.sql.Timestamp.from(expires));
-    String url=origin+"/"+c.get("locale")+"/account/"+(purpose.equals("VERIFY")?"verify":"reset")+"#token="+token;
+    String client=db.queryForObject("SELECT client FROM account_mail_jobs WHERE id=?",String.class,job);
+    String url=("web".equals(client)?webOrigin:origin)+"/"+c.get("locale")+"/account/"+(purpose.equals("VERIFY")?"verify":"reset")+"#token="+token;
     var payload=encrypt(job,json.writeValueAsString(Map.of("url",url,"locale",c.get("locale"))));
     db.update("UPDATE account_mail_jobs SET customer_id=?,link_id=?,purpose=?,cipher=?,nonce=?,state=?,next_attempt_at=now() WHERE id=?",customer,link,purpose,payload[0],payload[1],email&&!sender.isBlank()?"QUEUED":"WAITING_CONFIGURATION",job);
   }
@@ -103,14 +123,14 @@ public class AccountSecurityService {
     if(c.get("email_verified_at")!=null) return;
     if(db.queryForObject("SELECT count(*) FROM account_mail_jobs j JOIN account_links l ON l.id=j.link_id WHERE j.customer_id=? AND j.purpose='VERIFY' AND j.state IN ('QUEUED','WAITING_CONFIGURATION','SENDING') AND l.consumed_at IS NULL AND l.expires_at>now() AND j.created_at>=?",Integer.class,id,notBefore)>0) return;
     UUID job=UUID.randomUUID();
-    db.update("INSERT INTO account_mail_jobs(id,customer_id,purpose,state) VALUES(?,?,'VERIFY','QUEUED')",job,id);
+    db.update("INSERT INTO account_mail_jobs(id,customer_id,purpose,state,client) VALUES(?,?,'VERIFY','QUEUED',?)",job,id,requestClient());
     queueLink(job,c,"VERIFY");
   }
   @Transactional
   public void forgot(String email) {
     // Both known and unknown addresses take this same asynchronous, encrypted request path.
     UUID id=UUID.randomUUID(); var payload=encrypt(id,email.trim().toLowerCase(Locale.ROOT));
-    db.update("INSERT INTO account_mail_jobs(id,purpose,cipher,nonce,state) VALUES(?,'RESET_REQUEST',?,?,'QUEUED')",id,payload[0],payload[1]);
+    db.update("INSERT INTO account_mail_jobs(id,purpose,cipher,nonce,state,client) VALUES(?,'RESET_REQUEST',?,?,'QUEUED',?)",id,payload[0],payload[1],requestClient());
   }
   private Map<String,Object> usableLink(String token,String purpose) {
     var found=db.queryForList("SELECT customer_id FROM account_links WHERE token_hash=? AND purpose=?",hash(token),purpose);

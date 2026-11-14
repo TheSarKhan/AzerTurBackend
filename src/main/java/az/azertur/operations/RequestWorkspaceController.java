@@ -20,7 +20,7 @@ public class RequestWorkspaceController {
   @GetMapping("/request-workspace")
   public Object workspace(Principal actor) {
     var rows=db.queryForList("""
-      SELECT b.id,b.status,b.departure,b.title,b.created_at,b.assigned_to,c.name,c.email,c.locale,
+      SELECT b.id,b.status,b.departure,b.title,b.created_at,b.assigned_to,c.name,c.email,c.phone,c.locale,
         b.quote_payload,d.payload AS draft_payload,
         (SELECT count(*) FROM offer_revisions o WHERE o.booking_id=b.id AND o.source_quote_id=b.quote_id) AS sent,
         (SELECT kind FROM booking_requests r WHERE r.booking_id=b.id AND r.status='PENDING' LIMIT 1) AS pending_kind,

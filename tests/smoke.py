@@ -18,7 +18,7 @@ body=dict(slug='quba-khinalug',date=(datetime.date.today()+datetime.timedelta(da
 for currency,total in [('EUR',530),('USD',583),('AZN',991)]:
  status,quote=call('/api/v1/quotes',dict(body,currency=currency));assert status==200 and quote['total']==total;assert quote['deposit']+quote['balance']==total
 # any known destination may follow any other; unknown ones and a wrong day count are refused
-for patch in [dict(pax=13),dict(date='bad-date'),dict(customDays=2,cities=['Baku','Atlantis']),dict(customDays=2,cities=['Baku'])]:assert call('/api/v1/quotes',dict(body,**patch))[0]==400
+for patch in [dict(pax=102),dict(date='bad-date'),dict(customDays=2,cities=['Baku','Atlantis']),dict(customDays=2,cities=['Baku'])]:assert call('/api/v1/quotes',dict(body,**patch))[0]==400
 secrets={}
 env=pathlib.Path('.env')
 if env.exists(): secrets=dict(line.split('=',1) for line in env.read_text().splitlines() if '=' in line and not line.startswith('#'))

@@ -22,7 +22,11 @@ public class CustomerAuthController {
       @NotBlank @Email @Size(max = 254) String email,
       @NotBlank @Size(min = 12, max = 72) String password,
       @NotBlank @Size(min = 2, max = 100) String name,
-      @NotNull @Pattern(regexp = "en|ru|az") String locale) {}
+      @NotNull @Pattern(regexp = "en|ru|az") String locale,
+      // Contact number for the office; the site and the app ask for it, older clients may omit it.
+      @Size(max = 32) String phone) {}
+
+  public record Phone(@NotBlank @Size(max = 32) String phone) {}
 
   public record Login(
       @NotBlank @Email @Size(max = 254) String email, @NotBlank @Size(max = 72) String password) {}
@@ -32,7 +36,7 @@ public class CustomerAuthController {
     limiter.check(req.getRemoteAddr(), input.email());
     return ResponseEntity.status(201)
         .cacheControl(CacheControl.noStore())
-        .body(auth.register(input.email(), input.password(), input.name(), input.locale(),req.getHeader("User-Agent")));
+        .body(auth.register(input.email(), input.password(), input.name(), input.locale(), input.phone(), req.getHeader("User-Agent")));
   }
 
   @PostMapping("/login")
@@ -47,6 +51,15 @@ public class CustomerAuthController {
   @GetMapping("/me")
   public ResponseEntity<?> me(@AuthenticationPrincipal CustomerAuthService.Customer customer) {
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(customer);
+  }
+
+  @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "customerSession")
+  @PostMapping("/phone")
+  public ResponseEntity<?> phone(
+      @AuthenticationPrincipal CustomerAuthService.Customer customer, @Valid @RequestBody Phone input) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(auth.updatePhone(customer.id(), input.phone()));
   }
 
   @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "customerSession")

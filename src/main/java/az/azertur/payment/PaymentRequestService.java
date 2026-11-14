@@ -17,6 +17,8 @@ public class PaymentRequestService {
   public record MarkPaid(@NotNull BigDecimal amount,
       @NotNull @Pattern(regexp="BANK_TRANSFER|CASH|CARD_TERMINAL|OTHER") String method,
       @Size(max=120) String reference,java.time.Instant receivedAt) {}
+  public record Close(@NotNull @Pattern(regexp="FAILED|CANCELLED") String outcome,
+      @Size(max=500) String note) {}
   private final JdbcTemplate db;
   private final ObjectMapper json;
   private final OfficeFinance finance;
@@ -34,7 +36,7 @@ public class PaymentRequestService {
     return ((List<Map<String,Object>>)rows).stream().map(m->{var c=new LinkedHashMap<String,Object>(m);c.remove("payment_reference");return c;}).toList();
   }
   public Object list(UUID booking) {
-    return db.queryForList("SELECT id,contract_id,kind,service_key,amount_minor,currency,status,created_at,customer_message,paid_at,payment_method,payment_reference FROM staged_payment_requests WHERE booking_id=? ORDER BY created_at",booking);
+    return db.queryForList("SELECT id,contract_id,kind,service_key,amount_minor,currency,status,created_at,customer_message,paid_at,payment_method,payment_reference,closed_at,close_note FROM staged_payment_requests WHERE booking_id=? ORDER BY created_at",booking);
   }
   @Transactional
   public Object issue(UUID booking,Issue input,String actor) {
@@ -77,7 +79,7 @@ public class PaymentRequestService {
     }
     if(input.kind().equals("DEPOSIT")&&received>0)throw DomainException.conflict("DEPOSIT_ALREADY_RECEIVED");
     PaymentAmounts.within(amount,allocated,total);
-    if (input.kind().equals("DEPOSIT") && db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND kind='DEPOSIT' AND status<>'CANCELLED'",Integer.class,booking)>0)
+    if (input.kind().equals("DEPOSIT") && db.queryForObject("SELECT count(*) FROM staged_payment_requests WHERE booking_id=? AND kind='DEPOSIT' AND status NOT IN ('CANCELLED','FAILED')",Integer.class,booking)>0)
       throw DomainException.conflict("DEPOSIT_ALREADY_REQUESTED");
     UUID id=UUID.randomUUID();
     db.update("INSERT INTO staged_payment_requests(id,booking_id,contract_id,kind,service_key,amount_minor,currency,request_key,created_by) VALUES(?,?,?,?,?,?,?,?,?)",id,booking,input.contractId(),input.kind(),input.serviceKey(),amount,offer.path("currency").asText(),input.requestKey(),actor);
@@ -85,13 +87,17 @@ public class PaymentRequestService {
     for(String channel:List.of("EMAIL","PUSH"))db.update("INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,?,'PAYMENT_REQUESTED','Review the payment request in your account.',?)",UUID.randomUUID(),b.get("customer_id"),booking,channel,channel.equals("EMAIL")&&email?"QUEUED":"WAITING_CONFIGURATION");
     return list(booking);
   }
-  /** Finance staff record that the money for an open payment request has been received. */
+  /**
+   * Office staff record that the money for an open payment request has been received. Any
+   * operator may record a deposit; payments for single services need a finance role.
+   */
   @Transactional
-  public Object markPaid(UUID booking,UUID requestId,MarkPaid input,String actor) {
+  public Object markPaid(UUID booking,UUID requestId,MarkPaid input,String actor,boolean finance) {
     var b=db.queryForList("SELECT * FROM bookings WHERE id=? FOR UPDATE",booking).stream().findFirst().orElseThrow(DomainException::missing);
     var rows=db.queryForList("SELECT * FROM staged_payment_requests WHERE id=? AND booking_id=? FOR UPDATE",requestId,booking);
     if (rows.isEmpty()) throw DomainException.missing();
     var request=rows.getFirst();
+    if (!finance && !"DEPOSIT".equals(request.get("kind"))) throw DomainException.conflict("FINANCE_REQUIRED");
     if (List.of("CANCELLED","REJECTED").contains(b.get("status"))) throw DomainException.conflict("PAYMENT_WORKFLOW_CONFLICT");
     var state=(String)request.get("status");
     if (state.equals("PAID")) throw DomainException.conflict("PAYMENT_ALREADY_RECORDED");
@@ -106,6 +112,21 @@ public class PaymentRequestService {
       db.update("UPDATE bookings SET status='CONFIRMED',updated_at=now() WHERE id=?",booking);
     db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,'PAYMENT_RECEIVED',?)",UUID.randomUUID(),booking,actor,requestId+" "+input.method()+(reference==null?"":" "+reference));
     for(String channel:List.of("EMAIL","PUSH"))db.update("INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,?,'PAYMENT_RECEIVED','Your payment was received.',?)",UUID.randomUUID(),b.get("customer_id"),booking,channel,channel.equals("EMAIL")&&email?"QUEUED":"WAITING_CONFIGURATION");
+    return list(booking);
+  }
+  /** An operator closes an open request as unsuccessful or withdraws it; the customer is told. */
+  @Transactional
+  public Object close(UUID booking,UUID requestId,Close input,String actor) {
+    var b=db.queryForList("SELECT * FROM bookings WHERE id=? FOR UPDATE",booking).stream().findFirst().orElseThrow(DomainException::missing);
+    var rows=db.queryForList("SELECT * FROM staged_payment_requests WHERE id=? AND booking_id=? FOR UPDATE",requestId,booking);
+    if (rows.isEmpty()) throw DomainException.missing();
+    var state=(String)rows.getFirst().get("status");
+    if (state.equals("PAID")) throw DomainException.conflict("PAYMENT_ALREADY_RECORDED");
+    if (!state.equals("OPEN")) throw DomainException.conflict("PAYMENT_REQUEST_NOT_OPEN");
+    String note=input.note()==null||input.note().isBlank()?null:input.note().strip();
+    db.update("UPDATE staged_payment_requests SET status=?,closed_at=now(),closed_by=?,close_note=? WHERE id=?",input.outcome(),actor,note,requestId);
+    db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,?,?)",UUID.randomUUID(),booking,actor,"PAYMENT_REQUEST_"+input.outcome(),requestId+(note==null?"":" "+note));
+    for(String channel:List.of("EMAIL","PUSH"))db.update("INSERT INTO notification_outbox(id,customer_id,booking_id,channel,event,body,status) VALUES(?,?,?,?,'PAYMENT_REQUEST_CLOSED','A payment request was closed. Open your account for details.',?)",UUID.randomUUID(),b.get("customer_id"),booking,channel,channel.equals("EMAIL")&&email?"QUEUED":"WAITING_CONFIGURATION");
     return list(booking);
   }
 }
