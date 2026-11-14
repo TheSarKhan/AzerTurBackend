@@ -41,7 +41,14 @@ assert call(path,{'assign':False,'expectedOwner':w['actor']},ops)[0]==200
 _,w=call('operations/request-workspace',auth=ops)
 assert next(r for r in w['rows'] if r['id']==bid)['assigned_to'] is None
 assert any(a['booking_id']==bid and a['action']=='UNASSIGNED' for a in w['activity'])
+claim=path+'/claim'
+assert call(claim,{},auth)[0]==403
+status,claimed=call(claim,{},ops)
+assert status==200 and claimed['assigned_to']==w['actor'],(status,claimed)
+status,again=call(claim,{},ops)
+assert status==200 and again['assigned_to']==w['actor']
+assert call(path,{'assign':False,'expectedOwner':w['actor']},ops)[0]==200
 assert call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'QA-only cancellation for request workspace'},auth)[0]==200
 _,w=call('operations/request-workspace',auth=ops)
 assert next(r for r in w['rows'] if r['id']==bid)['stage']=='CANCELLATION_REVIEW'
-print('Request workspace passed: real customer data, stages, access boundaries, assignment, stale write rejection, persisted release and audit.')
+print('Request workspace passed: real customer data, stages, access boundaries, assignment, claim on first work, stale write rejection, persisted release and audit.')

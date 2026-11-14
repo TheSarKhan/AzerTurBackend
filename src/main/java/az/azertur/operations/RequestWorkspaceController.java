@@ -54,6 +54,22 @@ public class RequestWorkspaceController {
       """));
   }
   private boolean admin(Principal p){return p instanceof org.springframework.security.core.Authentication a && a.getAuthorities().stream().anyMatch(x->x.getAuthority().equals("ROLE_ADMIN"));}
+  /** Starting work on an unowned request makes it the caller's; an owned request is left as it is. */
+  @PostMapping("/bookings/{id}/assignment/claim")
+  @Transactional
+  public Map<String,Object> claim(@PathVariable UUID id,Principal actor){
+    var row=db.queryForList("SELECT assigned_to FROM bookings WHERE id=? FOR UPDATE",id);
+    if(row.isEmpty())throw DomainException.missing();
+    String owner=(String)row.getFirst().get("assigned_to");
+    if(owner==null){
+      owner=actor.getName();
+      db.update("UPDATE bookings SET assigned_to=?,updated_at=now() WHERE id=?",owner,id);
+      db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,?,?)",UUID.randomUUID(),id,actor.getName(),"ASSIGNED",owner);
+    }
+    var out=new LinkedHashMap<String,Object>();
+    out.put("assigned_to",owner);
+    return out;
+  }
   public record Assignment(boolean assign,String expectedOwner,String assignee){}
   @PostMapping("/bookings/{id}/assignment")
   @Transactional
