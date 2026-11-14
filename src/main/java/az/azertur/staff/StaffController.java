@@ -31,6 +31,6 @@ public class StaffController {
   db.update("INSERT INTO staff_accounts(username,name,password_hash,role,enabled,version) VALUES(?,?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET name=excluded.name,password_hash=excluded.password_hash,role=excluded.role,enabled=excluded.enabled,version=excluded.version",a.username(),a.name(),hash,a.role(),a.enabled(),version+1);
   db.update("INSERT INTO office_audit(id,actor,action,reference) VALUES(?,?,?,?)",UUID.randomUUID(),user.getName(),"STAFF_UPDATED",a.username());return list();
  }
- @GetMapping("/staff/directory") Object directory(){return db.queryForList("SELECT username,name FROM staff_accounts WHERE enabled=true UNION SELECT ?,? ORDER BY name",bootstrap,bootstrap);}
+ @GetMapping("/staff/directory") Object directory(){return db.queryForList("SELECT email AS username,name FROM staff_users WHERE active UNION SELECT username,name FROM staff_accounts WHERE enabled=true UNION SELECT ?,? ORDER BY name",bootstrap,bootstrap);}
  @GetMapping("/office-audit") Object audit(){return db.queryForList("SELECT actor,action,reference,created_at FROM office_audit ORDER BY created_at DESC LIMIT 200");}
 }

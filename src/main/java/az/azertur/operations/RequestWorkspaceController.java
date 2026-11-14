@@ -47,7 +47,7 @@ public class RequestWorkspaceController {
       }
       row.put("stage",stage);
     }
-    return Map.of("actor",actor.getName(),"admin",admin(actor),"staff",db.queryForList("SELECT username,name FROM staff_accounts WHERE enabled=true UNION SELECT ?,? ORDER BY name",bootstrap,bootstrap),"rows",rows,"activity",db.queryForList("""
+    return Map.of("actor",actor.getName(),"admin",admin(actor),"staff",db.queryForList("SELECT email AS username,name FROM staff_users WHERE active UNION SELECT username,name FROM staff_accounts WHERE enabled=true UNION SELECT ?,? ORDER BY name",bootstrap,bootstrap),"rows",rows,"activity",db.queryForList("""
       SELECT a.id,a.booking_id,coalesce(c.name,a.actor) AS actor,a.action,a.created_at FROM booking_audit a
       LEFT JOIN customers c ON c.email=a.actor OR c.id::text=a.actor
       ORDER BY a.created_at DESC,a.id LIMIT 12
@@ -65,7 +65,7 @@ public class RequestWorkspaceController {
     if(owner!=null&&!owner.equals(actor.getName())&&!admin(actor))throw DomainException.conflict("ASSIGNED_TO_ANOTHER_EMPLOYEE");
     String next=body.assign()?(body.assignee()==null?actor.getName():body.assignee()):null;
     if(next!=null&&!next.equals(actor.getName())&&!admin(actor))throw DomainException.conflict("ASSIGNMENT_NOT_ALLOWED");
-    if(next!=null&&!next.equals(bootstrap)&&db.queryForObject("SELECT count(*) FROM staff_accounts WHERE username=? AND enabled=true",Integer.class,next)==0)throw DomainException.bad("STAFF_NOT_ACTIVE");
+    if(next!=null&&!next.equals(bootstrap)&&db.queryForObject("SELECT (SELECT count(*) FROM staff_users WHERE email=? AND active)+(SELECT count(*) FROM staff_accounts WHERE username=? AND enabled=true)",Integer.class,next,next)==0)throw DomainException.bad("STAFF_NOT_ACTIVE");
     if(Objects.equals(owner,next))return;
     db.update("UPDATE bookings SET assigned_to=?,updated_at=now() WHERE id=?",next,id);
     db.update("INSERT INTO booking_audit(id,booking_id,actor,action,note) VALUES(?,?,?,?,?)",UUID.randomUUID(),id,actor.getName(),body.assign()?"ASSIGNED":"UNASSIGNED",next==null?"":next);
