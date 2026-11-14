@@ -15,4 +15,23 @@ public class Tour {
   public String image;
 
   protected Tour() {}
+
+  public Tour(
+      String slug,
+      String titleEn,
+      String titleRu,
+      String titleAz,
+      String region,
+      int days,
+      int fromPriceEur,
+      String image) {
+    this.slug = slug;
+    this.titleEn = titleEn;
+    this.titleRu = titleRu;
+    this.titleAz = titleAz;
+    this.region = region;
+    this.days = days;
+    this.fromPriceEur = fromPriceEur;
+    this.image = image;
+  }
 }

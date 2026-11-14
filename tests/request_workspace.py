@@ -51,4 +51,14 @@ assert call(path,{'assign':False,'expectedOwner':w['actor']},ops)[0]==200
 assert call('bookings/'+bid+'/requests',{'kind':'CANCEL','message':'QA-only cancellation for request workspace'},auth)[0]==200
 _,w=call('operations/request-workspace',auth=ops)
 assert next(r for r in w['rows'] if r['id']==bid)['stage']=='CANCELLATION_REVIEW'
-print('Request workspace passed: real customer data, stages, access boundaries, assignment, claim on first work, stale write rejection, persisted release and audit.')
+tour={'titleEn':'QA Café Route '+suffix[:6],'titleRu':'','titleAz':'QA Kafe marşrutu','region':'Baku','days':2,'fromPriceEur':150,'image':'baku'}
+assert call('operations/tours',tour)[0]==401
+assert call('operations/tours',tour,auth)[0]==403
+assert call('operations/tours',tour|{'image':'../x'},ops)[0]==400
+assert call('operations/tours',tour|{'days':0},ops)[0]==400
+status,created=call('operations/tours',tour,ops)
+assert status==200 and created['slug'].startswith('qa-cafe-route-') and created['titleRu']==tour['titleEn'] and created['titleAz']==tour['titleAz'],(status,created)
+status,second=call('operations/tours',tour,ops)
+assert status==200 and second['slug']==created['slug']+'-2',second
+assert created['slug'] in [t['slug'] for t in call('tours')[1]]
+print('Request workspace passed: real customer data, stages, access boundaries, assignment, claim on first work, adding a tour, stale write rejection, persisted release and audit.')
