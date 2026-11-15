@@ -47,7 +47,7 @@ public class OperationsController {
 
   /** Adds a journey to the catalogue the mobile app and quotes read; the slug comes from the English title. */
   @PostMapping("/tours")
-  @CacheEvict(value = "tours-v2", allEntries = true)
+  @CacheEvict(value = CatalogController.TOUR_CACHE, allEntries = true)
   public CatalogController.TourView createTour(@Valid @RequestBody NewTour in) {
     String base =
         Normalizer.normalize(in.titleEn().trim(), Normalizer.Form.NFD)
@@ -71,14 +71,6 @@ public class OperationsController {
             in.fromPriceEur(),
             in.image());
     tours.save(tour);
-    return new CatalogController.TourView(
-        tour.slug,
-        tour.titleEn,
-        tour.titleRu,
-        tour.titleAz,
-        tour.region,
-        tour.days,
-        tour.fromPriceEur,
-        tour.image);
+    return CatalogController.view(tour);
   }
 }

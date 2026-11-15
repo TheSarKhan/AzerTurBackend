@@ -13,6 +13,8 @@ public class Tour {
   public int days;
   public int fromPriceEur;
   public String image;
+  public Double latitude;
+  public Double longitude;
 
   protected Tour() {}
 

@@ -27,6 +27,12 @@ API: http://localhost:8080. Swagger: http://localhost:8080/swagger-ui.html. Open
 
 Docker publishes services only on loopback. Local Java also binds loopback by default; `SERVER_ADDRESS` can explicitly change this for device development. Compose sets it to `0.0.0.0` inside the container.
 
+## Starter travel catalog
+
+Flyway migration `V29__starter_travel_catalog.sql` adds 25 tours and 96 sample events on the next backend start with either migration chain. It preserves any existing rows with the same slugs. Sample events are marked in all three languages and are scheduled in three waves from the migration date in Baku. Past entries age out of the public calendar as usual.
+
+Deploy the corresponding AzerTurFrontend release alongside the backend. It includes the new tour cards, planner routes and bundled illustrations. The frontend catalog in `lib/catalog-tours.json` shares its slugs, prices and durations with the migration.
+
 ## Checks
 
 ```sh

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/tours")
 public class CatalogController {
+  public static final String TOUR_CACHE = "tours-v3";
   private final TourRepository tours;
 
   public CatalogController(TourRepository tours) {
@@ -22,24 +23,21 @@ public class CatalogController {
       String region,
       int days,
       int fromPriceEur,
-      String image)
+      String image,
+      Double latitude,
+      Double longitude)
       implements Serializable {}
 
+  public static TourView view(Tour tour) {
+    return new TourView(
+        tour.slug, tour.titleEn, tour.titleRu, tour.titleAz,
+        tour.region, tour.days, tour.fromPriceEur, tour.image,
+        tour.latitude, tour.longitude);
+  }
+
   @GetMapping
-  @Cacheable("tours-v2")
+  @Cacheable(TOUR_CACHE)
   public List<TourView> list() {
-    return tours.findAll().stream()
-        .map(
-            t ->
-                new TourView(
-                    t.slug,
-                    t.titleEn,
-                    t.titleRu,
-                    t.titleAz,
-                    t.region,
-                    t.days,
-                    t.fromPriceEur,
-                    t.image))
-        .toList();
+    return tours.findAll().stream().map(CatalogController::view).toList();
   }
 }
