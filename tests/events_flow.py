@@ -47,6 +47,14 @@ status,e=call(f"operations/events/{past['id']}/publish",{},ops);assert status==4
 status,page=call('events?q='+token);titles={i['titleEn'] for i in page['items']}
 assert status==200 and page['total']==2 and titles=={f'Concert {token}',f'Quba fair {token}'},(page['total'],titles)
 assert page['items'][0]['startsAt']<=page['items'][1]['startsAt'] and all(i['distanceKm'] is None for i in page['items'])
+# facets: counts by category and by city for the filters given; each split ignores its own filter so every chip the visitor could pick next is listed
+status,fa=call('events/facets?q='+token);assert status==200 and fa=={'total':2,'categories':{'CONCERT':1,'MARKET':1},'cities':{'baku':1,'quba':1}},fa
+status,fa=call('events/facets?q='+token+'&city=quba');assert fa=={'total':1,'categories':{'MARKET':1},'cities':{'baku':1,'quba':1}},fa
+status,fa=call('events/facets?q='+token+'&category=CONCERT');assert fa=={'total':1,'categories':{'CONCERT':1,'MARKET':1},'cities':{'baku':1}},fa
+status,fa=call('events/facets?q='+token+'&city=quba&category=CONCERT');assert fa['total']==0 and fa['categories']=={'MARKET':1} and fa['cities']=={'baku':1},fa
+status,fa=call('events/facets?q='+token+'&to='+(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=5)).strftime('%Y-%m-%d'));assert fa=={'total':0,'categories':{},'cities':{}},fa
+status,fa=call('events/facets?q=zzz-no-such-event-'+token);assert fa=={'total':0,'categories':{},'cities':{}},fa
+assert call('events/facets?category=NOPE')[0]==400 and call('events/facets?from=bad')[0]==400
 status,page=call('events?q='+token+'&city=quba');assert page['total']==1 and page['items'][0]['free'] is True and page['items'][0]['priceFromMinor'] is None
 status,page=call('events?q='+token+'&category=MARKET');assert page['total']==1 and page['items'][0]['citySlug']=='quba'
 status,page=call('events?q='+token+'&to='+(now+datetime.timedelta(days=5)).strftime('%Y-%m-%d'));assert page['total']==0

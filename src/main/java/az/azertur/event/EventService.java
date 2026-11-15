@@ -174,23 +174,67 @@ public class EventService {
     for (int i = 0; i < 4; i++) args.add(p);
   }
 
-  public Page<EventView> listPublic(PublicQuery q) {
+  /** The WHERE of a public read: published, not yet ended, and the filters that are given. */
+  private static StringBuilder publicWhere(
+      List<Object> args, Instant from, Instant to, String city, String category, String text) {
     StringBuilder where = new StringBuilder(" WHERE e.status='PUBLISHED' AND e.ends_at >= ?");
-    List<Object> args = new ArrayList<>();
-    args.add(ts(q.from() != null ? q.from() : Instant.now()));
-    if (q.to() != null) {
+    args.add(ts(from != null ? from : Instant.now()));
+    if (to != null) {
       where.append(" AND e.starts_at < ?");
-      args.add(ts(q.to()));
+      args.add(ts(to));
     }
-    if (q.city() != null && !q.city().isBlank()) {
+    if (city != null && !city.isBlank()) {
       where.append(" AND e.city_slug = ?");
-      args.add(q.city());
+      args.add(city);
     }
-    if (q.category() != null && !q.category().isBlank()) {
+    if (category != null && !category.isBlank()) {
       where.append(" AND e.category = ?");
-      args.add(q.category());
+      args.add(category);
     }
-    textFilter(where, args, q.q());
+    textFilter(where, args, text);
+    return where;
+  }
+
+  /** How many events match and how they split by category and by city. */
+  public record Facets(long total, Map<String, Long> categories, Map<String, Long> cities) {}
+
+  /**
+   * Counts for the filter chips. Each split ignores its own filter, so every option the visitor
+   * could switch to is listed together with how many events it would show.
+   */
+  public Facets facets(PublicQuery q) {
+    List<Object> args = new ArrayList<>();
+    long total =
+        db.queryForObject(
+            "SELECT count(*) FROM events e"
+                + publicWhere(args, q.from(), q.to(), q.city(), q.category(), q.q()),
+            Long.class,
+            args.toArray());
+    return new Facets(
+        total,
+        groupCount("e.category", q.from(), q.to(), q.city(), null, q.q()),
+        groupCount("e.city_slug", q.from(), q.to(), null, q.category(), q.q()));
+  }
+
+  /** The column is always one of two constants from {@link #facets}, never user input. */
+  private Map<String, Long> groupCount(
+      String column, Instant from, Instant to, String city, String category, String text) {
+    List<Object> args = new ArrayList<>();
+    String where = publicWhere(args, from, to, city, category, text).toString();
+    Map<String, Long> counts = new TreeMap<>();
+    db.query(
+        "SELECT " + column + " AS k, count(*) AS n FROM events e" + where + " GROUP BY " + column,
+        rs -> {
+          counts.put(rs.getString("k"), rs.getLong("n"));
+        },
+        args.toArray());
+    return counts;
+  }
+
+  public Page<EventView> listPublic(PublicQuery q) {
+    List<Object> args = new ArrayList<>();
+    StringBuilder where =
+        publicWhere(args, q.from(), q.to(), q.city(), q.category(), q.q());
     if (q.lat() != null) return nearMe(q, where, args);
     long total = db.queryForObject("SELECT count(*) FROM events e" + where, Long.class, args.toArray());
     List<Object> page = new ArrayList<>(args);

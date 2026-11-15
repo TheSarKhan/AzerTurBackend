@@ -62,6 +62,29 @@ public class EventController {
         .body(result);
   }
 
+  /** Counts by category and city for the current filters, so the app shows only chips that have events. */
+  @GetMapping("/api/v1/events/facets")
+  public ResponseEntity<EventService.Facets> facets(
+      @RequestParam(required = false) String city,
+      @RequestParam(required = false) String category,
+      @RequestParam(required = false) String from,
+      @RequestParam(required = false) String to,
+      @RequestParam(required = false) String q,
+      HttpServletRequest req) {
+    limiter.check(req, "events", PER_MINUTE);
+    if (category != null && !category.isBlank() && !CATEGORIES.contains(category))
+      throw DomainException.bad("INVALID_CATEGORY");
+    if (q != null && q.length() > 80) throw DomainException.bad("QUERY_TOO_LONG");
+    var result =
+        events.facets(
+            new EventService.PublicQuery(
+                city, category, EventRules.parseBoundary(from, false),
+                EventRules.parseBoundary(to, true), q, null, null, 25, 0, 1));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.maxAge(java.time.Duration.ofMinutes(1)).cachePublic())
+        .body(result);
+  }
+
   @GetMapping("/api/v1/events/{slug}")
   public ResponseEntity<EventService.EventDetail> detail(@PathVariable String slug, HttpServletRequest req) {
     limiter.check(req, "events", PER_MINUTE);
