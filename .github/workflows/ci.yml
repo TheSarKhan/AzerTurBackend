@@ -76,7 +76,6 @@ jobs:
           python3 tests/contact_flow.py
           python3 tests/account_security_flow.py
           python3 tests/google_flow.py
-          python3 tests/google_flow.py
           python3 tests/amendment_flow.py
           python3 tests/amendment_revision_flow.py
           python3 tests/travel_documents.py
