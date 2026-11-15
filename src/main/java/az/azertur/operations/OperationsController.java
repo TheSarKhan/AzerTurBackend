@@ -7,6 +7,7 @@ import az.azertur.shared.DomainException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.text.Normalizer;
+import java.util.List;
 import java.util.Locale;
 import org.springframework.cache.annotation.CacheEvict;
 import az.azertur.quote.*;
@@ -43,7 +44,8 @@ public class OperationsController {
       @NotBlank @Size(max = 160) String region,
       @Min(1) @Max(14) int days,
       @Min(1) @Max(100000) int fromPriceEur,
-      @NotBlank @Pattern(regexp = "mountains|sheki|gabala|baku") String image) {}
+      @NotBlank @Pattern(regexp = "mountains|sheki|gabala|baku") String image,
+      @Size(max = 6) List<@Pattern(regexp = "history|culture|medical|nature|entertainment|business") String> categories) {}
 
   /** Adds a journey to the catalogue the mobile app and quotes read; the slug comes from the English title. */
   @PostMapping("/tours")
@@ -70,6 +72,8 @@ public class OperationsController {
             in.days(),
             in.fromPriceEur(),
             in.image());
+    if (in.categories() != null && !in.categories().isEmpty())
+      tour.categories = String.join(",", in.categories().stream().distinct().toList());
     tours.save(tour);
     return CatalogController.view(tour);
   }

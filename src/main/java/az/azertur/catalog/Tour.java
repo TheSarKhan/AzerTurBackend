@@ -15,6 +15,8 @@ public class Tour {
   public String image;
   public Double latitude;
   public Double longitude;
+  /** Comma separated, see {@link TourCategories}. */
+  public String categories = "";
 
   protected Tour() {}
 
@@ -35,5 +37,6 @@ public class Tour {
     this.days = days;
     this.fromPriceEur = fromPriceEur;
     this.image = image;
+    this.categories = TourCategories.forImage(image);
   }
 }

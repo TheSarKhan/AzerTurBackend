@@ -15,6 +15,11 @@ for _ in range(2):
  # The starter catalogue (V29) adds tours; the original three stay and every tour carries a slug and map point or none
  slugs={t['slug'] for t in catalog};assert len(slugs)==len(catalog)>=3 and {'quba-khinalug','sheki-gabala','baku-discovery'}<=slugs
  assert all((t.get('latitude') is None)==(t.get('longitude') is None) for t in catalog)
+ # Categories come from the database: every tour has a list, only known categories, and the original three keep theirs
+ known={'history','culture','medical','nature','entertainment','business'}
+ assert all(isinstance(t['categories'],list) and set(t['categories'])<=known for t in catalog)
+ by={t['slug']:set(t['categories']) for t in catalog}
+ assert by['quba-khinalug']=={'nature'} and by['baku-discovery']=={'history','culture','entertainment'} and by['sheki-gabala']=={'history','culture','nature'}
 assert call('/api/v1/operations/overview')[0]==401
 assert call('/v3/api-docs')[0]==200
 body=dict(slug='quba-khinalug',date=(datetime.date.today()+datetime.timedelta(days=30)).isoformat(),pax=3,hotel='comfort',guide=True,transfer=False,activity=False,currency='EUR')
