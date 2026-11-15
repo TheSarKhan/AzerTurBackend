@@ -32,6 +32,11 @@ public class AuthRateLimiter {
       throw new DomainException(HttpStatus.TOO_MANY_REQUESTS, "VERIFICATION_COOLDOWN");
   }
 
+  /** For sign-in methods without a known account yet; the token signature is the real gate. */
+  public void checkAddress(String address) {
+    checkKey("auth-ip:" + address, 300);
+  }
+
   private void checkKey(String key, int maximum) {
     Long n =
         redis.execute(
