@@ -56,9 +56,9 @@ INSERT INTO events (
   status, source, source_note, created_by, updated_by
 )
 SELECT md5(event_slug)::uuid, event_slug,
-  title_en || ' · ' || name_en || ' (Sample)',
-  title_ru || ' · ' || name_ru || ' (Пример)',
-  title_az || ' · ' || name_az || ' (Nümunə)',
+  title_en || ', ' || name_en || ' (Sample)',
+  title_ru || ', ' || name_ru || ' (Пример)',
+  title_az || ', ' || name_az || ' (Nümunə)',
   'Sample calendar entry for ' || name_en || '. The date and location illustrate how the calendar works.',
   'Пример для календаря: ' || name_ru || '. Дата и место приведены для демонстрации.',
   name_az || ' üçün təqvim nümunəsi. Tarix və məkan təqvimin işini göstərmək üçün verilib.',

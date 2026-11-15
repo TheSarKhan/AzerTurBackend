@@ -1,6 +1,11 @@
 name: Deploy
 # Production deploys only after CI succeeds on main, or manually from the Actions tab.
+# The API deploys right after its own CI. The customer app (web client) lives in another repository,
+# so every five minutes this workflow looks at its main branch and ships the newest commit once that
+# commit's CI has passed and it is not already live.
 on:
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -23,14 +28,14 @@ on:
         default: 3f120313293a8dced58208d8007b3781b79ef425
 permissions:
   contents: read
-concurrency:
-  group: deploy-api
-  cancel-in-progress: false
 jobs:
   deploy:
     if: (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && inputs.target != 'mobile-web'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    concurrency:
+      group: deploy-api
+      cancel-in-progress: false
     env:
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       IMAGE: aztrip-api
@@ -80,6 +85,84 @@ jobs:
           done
           docker images aztrip-api --format '{{.Repository}}:{{.Tag}}' | grep -v ':latest$' | tail -n +4 | xargs -r docker rmi || true
           REMOTE
+
+  # Looks at the customer app's main branch. Cheap: it only reads GitHub, never the server.
+  mobile-check:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.pick.outputs.sha }}
+      ready: ${{ steps.pick.outputs.ready }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MOBILE_REPO: TheSarKhan/AzerTurMobileClient
+    steps:
+      - id: pick
+        run: |
+          sha=$(gh api "repos/$MOBILE_REPO/commits/main" --jq .sha)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          result=$(gh run list -R "$MOBILE_REPO" --workflow ci.yml --commit "$sha" --event push --limit 1 \
+            --json status,conclusion \
+            --jq '.[0] | if . == null or .status != "completed" then "pending" else .conclusion end')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$result" = success ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Customer app $sha: CI is '$result', nothing to ship"
+          fi
+
+  # Ships the tested customer app commit unless that exact commit is already running.
+  mobile-sync:
+    needs: mobile-check
+    if: needs.mobile-check.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: deploy-mobile-web
+      cancel-in-progress: false
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      MOBILE_SHA: ${{ needs.mobile-check.outputs.sha }}
+    steps:
+      - name: Configure existing deployment SSH identity
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Is this client already live?
+        id: live
+        run: |
+          current=$(ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+            "grep -o 'aztrip-mobile-web:[0-9a-f]\{40\}' /opt/aztrip/compose.override.yml | head -1 | cut -d: -f2" || true)
+          echo "Live client: ${current:-unknown}. Newest tested: $MOBILE_SHA"
+          if [ "$current" = "$MOBILE_SHA" ]; then echo "same=true" >> "$GITHUB_OUTPUT"; else echo "same=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.live.outputs.same == 'false'
+      - name: Checkout the tested customer app
+        if: steps.live.outputs.same == 'false'
+        uses: actions/checkout@v4
+        with:
+          repository: TheSarKhan/AzerTurMobileClient
+          ref: ${{ env.MOBILE_SHA }}
+          path: mobile-client
+      - uses: docker/setup-buildx-action@v3
+        if: steps.live.outputs.same == 'false'
+      - name: Build the customer app image
+        if: steps.live.outputs.same == 'false'
+        run: docker buildx build --platform linux/amd64 --load -t "aztrip-mobile-web:$MOBILE_SHA" mobile-client
+      - name: Ship it and replace only the static client
+        if: steps.live.outputs.same == 'false'
+        run: |
+          docker save "aztrip-mobile-web:$MOBILE_SHA" | gzip | ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" 'gunzip | docker load'
+          scp -i ~/.ssh/deploy_key deploy/mobile-client-update.py "$SSH_USER@$SSH_HOST:/opt/aztrip/mobile-client-update.py"
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" python3 /opt/aztrip/mobile-client-update.py "$MOBILE_SHA"
 
   mobile-web:
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'mobile-web'

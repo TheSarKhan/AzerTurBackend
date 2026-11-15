@@ -11,7 +11,10 @@ preflight=urllib.request.Request(origin+'/api/v1/operations/overview',method='OP
 with urllib.request.urlopen(preflight) as response: assert response.headers.get('Access-Control-Allow-Origin')=='http://localhost:5173'
 assert call('/actuator/health')[1]['status']=='UP'
 for _ in range(2):
- status,catalog=call('/api/v1/tours');assert status==200 and len(catalog)==3
+ status,catalog=call('/api/v1/tours');assert status==200
+ # The starter catalogue (V29) adds tours; the original three stay and every tour carries a slug and map point or none
+ slugs={t['slug'] for t in catalog};assert len(slugs)==len(catalog)>=3 and {'quba-khinalug','sheki-gabala','baku-discovery'}<=slugs
+ assert all((t.get('latitude') is None)==(t.get('longitude') is None) for t in catalog)
 assert call('/api/v1/operations/overview')[0]==401
 assert call('/v3/api-docs')[0]==200
 body=dict(slug='quba-khinalug',date=(datetime.date.today()+datetime.timedelta(days=30)).isoformat(),pax=3,hotel='comfort',guide=True,transfer=False,activity=False,currency='EUR')
@@ -26,7 +29,7 @@ password=os.environ.get('OPERATIONS_PASSWORD',secrets.get('OPERATIONS_PASSWORD')
 if password:
  user=os.environ.get('OPERATIONS_USER',secrets.get('OPERATIONS_USER','operations'))
  authorization='Basic '+base64.b64encode((user+':'+password).encode()).decode()
- status,summary=call('/api/v1/operations/overview',authorization=authorization);assert status==200 and summary['tourCount']==3 and summary['quoteCount']>=3
+ status,summary=call('/api/v1/operations/overview',authorization=authorization);assert status==200 and summary['tourCount']==len(catalog) and summary['quoteCount']>=3
 if os.environ.get('FRONTEND_ORIGIN'):
  status,quote=call('/api/quotes',body,base=os.environ['FRONTEND_ORIGIN']);assert status==200 and quote['total']==530
 print('API smoke checks passed: health, cached catalogue, security, Swagger, currencies, persistence and validation.')
